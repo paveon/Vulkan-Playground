@@ -31,9 +31,6 @@ namespace EventCategory {
 
 
 class Event {
-private:
-    bool m_Handled = false;
-
 protected:
     Event() = default;
 
@@ -44,6 +41,8 @@ public:
     virtual std::string ToString() const { return GetName(); }
 
     bool HasCategories(uint32_t categoryFlags) { return CategoryFlags() &categoryFlags; }
+
+    bool Handled = false;
 };
 
 

@@ -30,6 +30,7 @@ void Application::Run() {
 
              ProcessEventQueue();
              m_Renderer.DrawFrame();
+             m_LayerStack.UpdateLayers();
 
              auto drawEnd = TIME_NOW;
              auto drawTime = std::chrono::duration_cast<std::chrono::milliseconds>(drawEnd - drawStart);
@@ -50,13 +51,13 @@ void Application::OnEvent(std::unique_ptr<Event> e) {
    if (m_WindowEventQueue.size() < 50) m_WindowEventQueue.push(std::move(e));
 }
 
-bool Application::OnWindowClose(const WindowCloseEvent&) {
+bool Application::OnWindowClose(WindowCloseEvent&) {
    std::cout << "[Application] Closing window..." << std::endl;
    m_Running = false;
    return true;
 }
 
-bool Application::OnWindowResize(const WindowResizeEvent& e) {
+bool Application::OnWindowResize(WindowResizeEvent& e) {
    m_Renderer.RecreateSwapchain(e.Width(), e.Height());
    return true;
 }
@@ -67,20 +68,49 @@ void Application::ProcessEventQueue() {
    while (!m_WindowEventQueue.empty()) {
       auto event = std::move(m_WindowEventQueue.front());
       m_WindowEventQueue.pop();
+
       switch (event->Type()) {
-         case EventType::WindowResize: resizeEvent = std::move(event); break;
-         case EventType::WindowClose: OnWindowClose(static_cast<const WindowCloseEvent&>(*event)); break;
-         case EventType::MouseButtonPress: OnMouseButtonPress(static_cast<const MouseButtonPressEvent&>(*event)); break;
-         case EventType::MouseButtonRelease: OnMouseButtonRelease(static_cast<const MouseButtonReleaseEvent&>(*event)); break;
-         case EventType::MouseMove: OnMouseMove(static_cast<const MouseMoveEvent&>(*event)); break;
-         case EventType::MouseScroll: OnMouseScroll(static_cast<const MouseScrollEvent&>(*event)); break;
-         case EventType::KeyPress: OnKeyPress(static_cast<const KeyPressEvent&>(*event)); break;
-         case EventType::KeyRelease: OnKeyRelease(static_cast<const KeyReleaseEvent&>(*event)); break;
+         case EventType::WindowResize: resizeEvent = std::move(event);
+            continue;
+         case EventType::WindowClose:
+            OnWindowClose(static_cast<WindowCloseEvent&>(*event));
+            continue;
+
+         case EventType::MouseButtonPress:
+            OnMouseButtonPress(static_cast<MouseButtonPressEvent&>(*event));
+            m_LayerStack.PropagateEvent(static_cast<MouseButtonPressEvent&>(*event), &Layer::OnMouseButtonPress);
+            break;
+
+         case EventType::MouseButtonRelease:
+            OnMouseButtonRelease(static_cast<MouseButtonReleaseEvent&>(*event));
+            m_LayerStack.PropagateEvent(static_cast<MouseButtonReleaseEvent&>(*event), &Layer::OnMouseButtonRelease);
+            break;
+
+         case EventType::MouseMove:
+            OnMouseMove(static_cast<MouseMoveEvent&>(*event));
+            m_LayerStack.PropagateEvent(static_cast<MouseMoveEvent&>(*event), &Layer::OnMouseMove);
+            break;
+
+         case EventType::MouseScroll:
+            OnMouseScroll(static_cast<MouseScrollEvent&>(*event));
+            m_LayerStack.PropagateEvent(static_cast<MouseScrollEvent&>(*event), &Layer::OnMouseScroll);
+            break;
+
+         case EventType::KeyPress:
+            OnKeyPress(static_cast<KeyPressEvent&>(*event));
+            m_LayerStack.PropagateEvent(static_cast<KeyPressEvent&>(*event), &Layer::OnKeyPress);
+            break;
+
+         case EventType::KeyRelease:
+            OnKeyRelease(static_cast<KeyReleaseEvent&>(*event));
+            m_LayerStack.PropagateEvent(static_cast<KeyReleaseEvent&>(*event), &Layer::OnKeyRelease);
+            break;
 
          default:
             break;
       }
    }
-   if (resizeEvent) OnWindowResize(static_cast<const WindowResizeEvent&>(*resizeEvent));
+
+   if (resizeEvent) OnWindowResize(static_cast<WindowResizeEvent&>(*resizeEvent));
 }
 

@@ -27,7 +27,8 @@ set(SOURCES
         src/Platform/Windows/WindowWin32.cpp
         src/Engine/Window.cpp
         src/Engine/Application.cpp
-        src/Engine/EntryPoint.cpp)
+        src/Engine/EntryPoint.cpp
+        src/Engine/LayerStack.cpp)
 
 set(HEADERS
         extern/mathlib/mathlib.h
@@ -44,7 +45,9 @@ set(HEADERS
         src/Engine/Core.h
         src/Engine/Application.h
         src/Engine/Include/Engine.h
-        src/Engine/EntryPoint.h src/SafeQueue.h)
+        src/Engine/EntryPoint.h
+        src/Engine/Layer.h
+        src/Engine/LayerStack.h)
 
 add_library(vulkan STATIC IMPORTED GLOBAL)
 set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
