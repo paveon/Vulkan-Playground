@@ -2,23 +2,52 @@ cmake_minimum_required(VERSION 3.14)
 project(Vulkan)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(extern/glfw)
 include_directories(extern/glfw/include)
+include_directories(extern/stb)
+include_directories(extern/tinyobjloader)
+include_directories(extern/glm)
+include_directories(extern/mathlib)
+include_directories(src)
+include_directories(D:/VulkanSDK/1.1.106.0/Include)
 
 
 set(SOURCES
-        src/renderer.cpp
-        src/mathlib.cpp
-        src/utils.cpp src/utils.h)
+        src/SandboxApp.cpp
+        extern/mathlib/mathlib.cpp
+        src/Renderer/renderer.cpp
+        src/Renderer/utils.cpp
+        src/Renderer/Device.cpp
+        src/Renderer/vulkan_wrappers.cpp
+        src/Platform/Windows/WindowWin32.cpp
+        src/Engine/Window.cpp
+        src/Engine/Application.cpp
+        src/Engine/EntryPoint.cpp)
 
 set(HEADERS
-        src/mathlib.h
-        src/utils.cpp src/utils.h)
+        extern/mathlib/mathlib.h
+        src/Renderer/utils.h
+        src/Renderer/Device.h
+        src/Renderer/renderer.h
+        src/Renderer/vulkan_wrappers.h
+        src/Platform/Windows/WindowWin32.h
+        src/Engine/Window.h
+        src/Engine/Events/Event.h
+        src/Engine/Events/KeyEvents.h
+        src/Engine/Events/MouseEvents.h
+        src/Engine/Events/WindowEvents.h
+        src/Engine/Core.h
+        src/Engine/Application.h
+        src/Engine/Include/Engine.h
+        src/Engine/EntryPoint.h src/SafeQueue.h)
 
+add_library(vulkan STATIC IMPORTED GLOBAL)
+set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
 
 add_executable(renderer ${SOURCES} ${HEADERS})
 target_link_libraries(renderer vulkan glfw ${GLFW_LIBRARIES})
