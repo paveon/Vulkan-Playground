@@ -6,11 +6,11 @@
 
 class MouseMoveEvent : public Event {
 protected:
-    double m_X;
-    double m_Y;
+    float m_X;
+    float m_Y;
 
 public:
-    MouseMoveEvent(double x, double y) : m_X(x), m_Y(y) {}
+    MouseMoveEvent(float x, float y) : m_X(x), m_Y(y) {}
 
     EventType Type() const override { return EventType::MouseMove; }
 
@@ -23,16 +23,19 @@ public:
        ss << GetName() << ": [" << m_X << ", " << m_Y << "]";
        return ss.str();
     }
+
+    float X() const { return m_X; }
+    float Y() const { return m_Y; }
 };
 
 
 class MouseScrollEvent : public Event {
 protected:
-    double m_OffsetX;
-    double m_OffsetY;
+    float m_OffsetX;
+    float m_OffsetY;
 
 public:
-    MouseScrollEvent(double offsetX, double offsetY) : m_OffsetX(offsetX), m_OffsetY(offsetY) {}
+    MouseScrollEvent(float offsetX, float offsetY) : m_OffsetX(offsetX), m_OffsetY(offsetY) {}
 
     EventType Type() const override { return EventType::MouseScroll; }
 
@@ -62,6 +65,8 @@ public:
        ss << GetName() << ": " << m_Button;
        return ss.str();
     }
+
+    int Button() const { return m_Button; }
 };
 
 

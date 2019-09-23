@@ -1,16 +1,23 @@
 #include <chrono>
 #include <thread>
 #include <memory>
-#include <Renderer/utils.h>
+#include "Renderer/utils.h"
 #include "Application.h"
 #include "Core.h"
 
 
-Application::Application() : m_Instance(ArrayToVector(s_VulkanValidationLayers)),
-                             m_Window(Window::Create(WindowWidth, WindowHeight, "Renderer")),
-                             m_Renderer(m_Instance.data(), m_Window, m_Window->FramebufferSize()) {
-   std::cout << currentTime() << "[Engine] Initialized application" << std::endl;
-   m_Window->SetEventCallback(std::bind(&Application::OnEvent, this, std::placeholders::_1));
+Application* Application::s_Application;
+
+
+Application::Application(const char* name) : m_ApplicationName(name) {
+   if (s_Application) {
+      std::ostringstream ss;
+      ss << "[Engine] Application '" << s_Application->m_ApplicationName << " [" << s_Application << "]' already exists!";
+      throw std::runtime_error(ss.str());
+   }
+
+   s_Application = this;
+   Init();
 }
 
 
@@ -19,17 +26,27 @@ Application::~Application() {
 }
 
 
+void Application::Init() {
+   m_Window = Window::Create(800, 600, m_ApplicationName.data());
+   m_Window->SetEventCallback(std::bind(&Application::OnEvent, this, std::placeholders::_1));
+   m_Renderer = std::make_unique<Renderer>(m_Window->Context());
+
+   std::cout << currentTime() << "[Engine] Initialized application" << std::endl;
+}
+
+
 void Application::Run() {
    m_Running = true;
 
-   std::thread renderThread([this](){
+   std::thread renderThread([this]() {
        std::chrono::milliseconds frameTiming(16);
        try {
           while (m_Running) {
              auto drawStart = TIME_NOW;
 
              ProcessEventQueue();
-             m_Renderer.DrawFrame();
+
+             m_Renderer->DrawFrame();
              m_LayerStack.UpdateLayers();
 
              auto drawEnd = TIME_NOW;
@@ -58,7 +75,7 @@ bool Application::OnWindowClose(WindowCloseEvent&) {
 }
 
 bool Application::OnWindowResize(WindowResizeEvent& e) {
-   m_Renderer.RecreateSwapchain(e.Width(), e.Height());
+   m_Renderer->RecreateSwapchain(e.Width(), e.Height());
    return true;
 }
 
@@ -70,7 +87,8 @@ void Application::ProcessEventQueue() {
       m_WindowEventQueue.pop();
 
       switch (event->Type()) {
-         case EventType::WindowResize: resizeEvent = std::move(event);
+         case EventType::WindowResize:
+            resizeEvent = std::move(event);
             continue;
          case EventType::WindowClose:
             OnWindowClose(static_cast<WindowCloseEvent&>(*event));
@@ -111,6 +129,9 @@ void Application::ProcessEventQueue() {
       }
    }
 
-   if (resizeEvent) OnWindowResize(static_cast<WindowResizeEvent&>(*resizeEvent));
+   if (resizeEvent) {
+      OnWindowResize(static_cast<WindowResizeEvent&>(*resizeEvent));
+      m_LayerStack.PropagateEvent(static_cast<WindowResizeEvent&>(*resizeEvent), &Layer::OnWindowResize);
+   }
 }
 

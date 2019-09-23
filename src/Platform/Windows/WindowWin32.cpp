@@ -1,16 +1,25 @@
 #include "WindowWin32.h"
-#include <Renderer/utils.h>
+
+#include <GLFW/glfw3.h>
+#include <Engine/Renderer/utils.h>
 #include <Engine/Events/WindowEvents.h>
 #include <Engine/Events/KeyEvents.h>
 #include <Engine/Events/MouseEvents.h>
+#include <Platform/Vulkan/GraphicsContextVk.h>
 
 std::unique_ptr<Window> Window::Create(uint32_t width, uint32_t height, const char* title) {
    return std::make_unique<WindowWin32>(width, height, title);
 }
 
+
 WindowWin32::WindowWin32(uint32_t width, uint32_t height, const char* title) {
    InitializeGLFW();
+
    m_Window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+
+   m_Context = GfxContext::Create(m_Window);
+   m_Context->Init();
+
    glfwSetWindowUserPointer(m_Window, this);
    //glfwSetFramebufferSizeCallback(m_Window, WindowWin32::ResizeCallback);
 
@@ -26,7 +35,7 @@ WindowWin32::WindowWin32(uint32_t width, uint32_t height, const char* title) {
        windowWin32->m_EventCallback(std::make_unique<WindowCloseEvent>());
    });
 
-   glfwSetKeyCallback(m_Window, [](GLFWwindow* window, int key, int scanCode, int action, int modes) {
+   glfwSetKeyCallback(m_Window, [](GLFWwindow* window, int key, int, int action, int) {
        auto windowWin32 = static_cast<WindowWin32*>(glfwGetWindowUserPointer(window));
        switch (action) {
           case GLFW_PRESS:
@@ -46,7 +55,7 @@ WindowWin32::WindowWin32(uint32_t width, uint32_t height, const char* title) {
        }
    });
 
-   glfwSetMouseButtonCallback(m_Window, [](GLFWwindow* window, int button, int action, int modes) {
+   glfwSetMouseButtonCallback(m_Window, [](GLFWwindow* window, int button, int action, int) {
        auto windowWin32 = static_cast<WindowWin32*>(glfwGetWindowUserPointer(window));
        switch (action) {
           case GLFW_PRESS:
@@ -64,11 +73,20 @@ WindowWin32::WindowWin32(uint32_t width, uint32_t height, const char* title) {
 
    glfwSetScrollCallback(m_Window, [](GLFWwindow* window, double offsetX, double offsetY) {
        auto windowWin32 = static_cast<WindowWin32*>(glfwGetWindowUserPointer(window));
-       windowWin32->m_EventCallback(std::make_unique<MouseScrollEvent>(offsetX, offsetY));
+       windowWin32->m_EventCallback(std::make_unique<MouseScrollEvent>(static_cast<float>(offsetX), static_cast<float>(offsetY)));
    });
 
    glfwSetCursorPosCallback(m_Window, [](GLFWwindow* window, double x, double y) {
        auto windowWin32 = static_cast<WindowWin32*>(glfwGetWindowUserPointer(window));
-       windowWin32->m_EventCallback(std::make_unique<MouseMoveEvent>(x, y));
+       windowWin32->m_EventCallback(std::make_unique<MouseMoveEvent>(static_cast<float>(x), static_cast<float>(y)));
    });
+}
+
+
+WindowWin32::~WindowWin32() {
+   glfwDestroyWindow(m_Window);
+}
+
+void WindowWin32::OnUpdate() {
+   glfwWaitEvents();
 }

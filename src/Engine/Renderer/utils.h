@@ -60,9 +60,9 @@ std::vector<char> readFile(const std::string& filename);
 VkImageMemoryBarrier
 imageBarrier(VkImage image, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout);
 
-void copyBuffer(const CommandBuffer& cmdBuffer, const Buffer& srcBuffer, const Buffer& dstBuffer, VkDeviceSize size);
+void copyBuffer(const vk::CommandBuffer& cmdBuffer, const vk::Buffer& srcBuffer, const vk::Buffer& dstBuffer, VkDeviceSize size);
 
-void copyBufferToImage(const CommandBuffer& cmdBuffer, const Buffer& buffer, const Image& image);
+void copyBufferToImage(const vk::CommandBuffer& cmdBuffer, const vk::Buffer& buffer, const vk::Image& image);
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
 

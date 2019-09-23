@@ -25,14 +25,17 @@ constexpr double PI_RAD = M_PI / 180.0f;
 namespace math {
     struct mat4x4;
 
+    using Type = float;
 
     struct vec2 {
-        float x, y;
+        Type x, y;
 
     public:
         vec2() : x(0), y(0) {}
 
-        vec2(float x, float y) : x(x), y(y) {}
+        template<typename T> explicit vec2(T value) : x(static_cast<Type>(value)), y(static_cast<Type>(value)) {}
+
+        template<typename T> vec2(T x, T y) : x(static_cast<Type>(x)), y(static_cast<Type>(y)) {}
 
         bool operator==(const vec2& other) const { return x == other.x && y == other.y; }
     };

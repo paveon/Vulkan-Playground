@@ -7,6 +7,8 @@
 #include <limits>
 #include <cstring>
 
+using namespace vk;
+
 static bool s_GLFWInitialized = false;
 
 

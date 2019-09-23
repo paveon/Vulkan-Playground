@@ -1,0 +1,19 @@
+#ifndef VULKAN_MOUSEBUTTONCODES_H
+#define VULKAN_MOUSEBUTTONCODES_H
+
+
+constexpr int IO_MOUSE_BUTTON_1 = 0;
+constexpr int IO_MOUSE_BUTTON_2 = 1;
+constexpr int IO_MOUSE_BUTTON_3 = 2;
+constexpr int IO_MOUSE_BUTTON_4 = 3;
+constexpr int IO_MOUSE_BUTTON_5 = 4;
+constexpr int IO_MOUSE_BUTTON_6 = 5;
+constexpr int IO_MOUSE_BUTTON_7 = 6;
+constexpr int IO_MOUSE_BUTTON_8 = 7;
+constexpr int IO_MOUSE_BUTTON_LAST = IO_MOUSE_BUTTON_8;
+constexpr int IO_MOUSE_BUTTON_LEFT = IO_MOUSE_BUTTON_1;
+constexpr int IO_MOUSE_BUTTON_RIGHT = IO_MOUSE_BUTTON_2;
+constexpr int IO_MOUSE_BUTTON_MIDDLE = IO_MOUSE_BUTTON_3;
+
+
+#endif //VULKAN_MOUSEBUTTONCODES_H

@@ -2,10 +2,10 @@
 #define VULKAN_LAYER_H
 
 #include <string>
-#include <Engine/Events/Event.h>
-#include <Engine/Events/WindowEvents.h>
-#include <Engine/Events/MouseEvents.h>
-#include <Engine/Events/KeyEvents.h>
+#include "Events/Event.h"
+#include "Events/WindowEvents.h"
+#include "Events/MouseEvents.h"
+#include "Events/KeyEvents.h"
 
 class Layer {
 protected:
@@ -18,13 +18,14 @@ public:
     virtual void OnAttach() {}
     virtual void OnDetach() {}
     virtual void OnUpdate() {}
-    virtual void OnEvent(Event&) {};
+    virtual void OnEvent(Event&) {}
+    virtual bool OnWindowResize(WindowResizeEvent&) { return true; }
     virtual bool OnMouseMove(MouseMoveEvent&) { return true; };
-    virtual bool OnMouseButtonPress(MouseButtonPressEvent&) { return true; };
-    virtual bool OnMouseButtonRelease(MouseButtonReleaseEvent&) { return true; };
-    virtual bool OnMouseScroll(MouseScrollEvent&) { return true; };
-    virtual bool OnKeyPress(KeyPressEvent&) { return true; };
-    virtual bool OnKeyRelease(KeyReleaseEvent&) { return true; };
+    virtual bool OnMouseButtonPress(MouseButtonPressEvent&) { return true; }
+    virtual bool OnMouseButtonRelease(MouseButtonReleaseEvent&) { return true; }
+    virtual bool OnMouseScroll(MouseScrollEvent&) { return true; }
+    virtual bool OnKeyPress(KeyPressEvent&) { return true; }
+    virtual bool OnKeyRelease(KeyReleaseEvent&) { return true; }
 
     const std::string& LayerName() const { return m_DebugName; }
 };

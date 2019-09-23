@@ -9,6 +9,7 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(extern/glfw)
 include_directories(extern/glfw/include)
+include_directories(extern/imgui)
 include_directories(extern/stb)
 include_directories(extern/tinyobjloader)
 include_directories(extern/glm)
@@ -19,35 +20,63 @@ include_directories(D:/VulkanSDK/1.1.106.0/Include)
 
 set(SOURCES
         src/SandboxApp.cpp
-        extern/mathlib/mathlib.cpp
-        src/Renderer/renderer.cpp
-        src/Renderer/utils.cpp
-        src/Renderer/Device.cpp
-        src/Renderer/vulkan_wrappers.cpp
-        src/Platform/Windows/WindowWin32.cpp
+
+        src/Engine/Renderer/renderer.cpp
+        src/Engine/Renderer/utils.cpp
+        src/Engine/Renderer/Device.cpp
+        src/Engine/Renderer/vulkan_wrappers.cpp
+
         src/Engine/Window.cpp
         src/Engine/Application.cpp
         src/Engine/EntryPoint.cpp
-        src/Engine/LayerStack.cpp)
+        src/Engine/LayerStack.cpp
+        src/Engine/ImGuiLayer.cpp
+        src/Engine/Renderer/Texture.cpp
+        src/Engine/Renderer/GraphicsContext.cpp
+
+        src/Platform/Windows/WindowWin32.cpp
+        src/Platform/Windows/InputWin32.cpp
+        src/Platform/Vulkan/TextureVk.cpp
+        src/Platform/Vulkan/GraphicsContextVk.cpp
+
+        extern/mathlib/mathlib.cpp
+        extern/imgui/imgui.cpp
+        extern/imgui/imgui_draw.cpp
+        extern/imgui/imgui_widgets.cpp
+        extern/imgui/imgui_demo.cpp)
 
 set(HEADERS
-        extern/mathlib/mathlib.h
-        src/Renderer/utils.h
-        src/Renderer/Device.h
-        src/Renderer/renderer.h
-        src/Renderer/vulkan_wrappers.h
+        src/Engine/Renderer/utils.h
+        src/Engine/Renderer/Device.h
+        src/Engine/Renderer/renderer.h
+        src/Engine/Renderer/vulkan_wrappers.h
+        src/Engine/Renderer/GraphicsContext.h
+        src/Engine/Renderer/Texture.h
+
         src/Platform/Windows/WindowWin32.h
+        src/Platform/Windows/InputWin32.h
+        src/Platform/Vulkan/GraphicsContextVk.h
+        src/Platform/Vulkan/TextureVk.h
+
         src/Engine/Window.h
         src/Engine/Events/Event.h
         src/Engine/Events/KeyEvents.h
         src/Engine/Events/MouseEvents.h
         src/Engine/Events/WindowEvents.h
+
         src/Engine/Core.h
         src/Engine/Application.h
         src/Engine/Include/Engine.h
         src/Engine/EntryPoint.h
         src/Engine/Layer.h
-        src/Engine/LayerStack.h)
+        src/Engine/LayerStack.h
+        src/Engine/ImGuiLayer.h
+        src/Engine/Input.h
+        src/Engine/KeyCodes.h
+        src/Engine/MouseButtonCodes.h
+
+        extern/mathlib/mathlib.h
+        extern/imgui/imgui.h)
 
 add_library(vulkan STATIC IMPORTED GLOBAL)
 set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")

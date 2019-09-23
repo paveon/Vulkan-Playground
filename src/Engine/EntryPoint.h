@@ -4,7 +4,6 @@
 #include <memory>
 #include <Engine/Application.h>
 
-extern std::unique_ptr<Application> CreateApplication();
 
 int main(int argc, char* argv[]);
 

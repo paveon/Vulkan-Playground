@@ -3,12 +3,13 @@
 #include <iostream>
 #include <set>
 
+using namespace vk;
 
 const std::array<const char*, 1> Device::s_RequiredExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
-Device::Device(VkInstance instance, VkSurfaceKHR surface) : m_Instance(instance), m_Surface(surface) {
+Device::Device(const vk::Instance& instance, const vk::Surface& surface) : m_Instance(&instance), m_Surface(&surface) {
    m_PhysicalDevice = pickPhysicalDevice();
    createLogicalDevice();
 }
@@ -16,23 +17,22 @@ Device::Device(VkInstance instance, VkSurfaceKHR surface) : m_Instance(instance)
 
 VkPhysicalDevice Device::pickPhysicalDevice() {
    uint32_t deviceCount = 0;
-   vkEnumeratePhysicalDevices(m_Instance, &deviceCount, nullptr);
+   vkEnumeratePhysicalDevices(m_Instance->data(), &deviceCount, nullptr);
    if (deviceCount == 0) { throw std::runtime_error("No GPU with Vulkan support!"); }
    std::vector<VkPhysicalDevice> devices(deviceCount);
-   vkEnumeratePhysicalDevices(m_Instance, &deviceCount, devices.data());
+   vkEnumeratePhysicalDevices(m_Instance->data(), &deviceCount, devices.data());
 
    VkPhysicalDevice fallback = nullptr;
-   VkPhysicalDeviceProperties deviceProperties;
    VkPhysicalDeviceFeatures supportedFeatures;
    for (const auto& device : devices) {
-      vkGetPhysicalDeviceProperties(device, &deviceProperties);
+      vkGetPhysicalDeviceProperties(device, &m_Properties);
       vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
       if (supportedFeatures.samplerAnisotropy) {
-         if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-            std::cout << "[Vulkan] Picking discrete GPU: " << deviceProperties.deviceName << std::endl;
-            VkSampleCountFlags counts = std::min(deviceProperties.limits.framebufferColorSampleCounts,
-                                                 deviceProperties.limits.framebufferDepthSampleCounts);
+         if (m_Properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+            std::cout << "[Vulkan] Picking discrete GPU: " << m_Properties.deviceName << std::endl;
+            VkSampleCountFlags counts = std::min(m_Properties.limits.framebufferColorSampleCounts,
+                                                 m_Properties.limits.framebufferDepthSampleCounts);
 
             if (counts & VK_SAMPLE_COUNT_64_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_64_BIT; }
             else if (counts & VK_SAMPLE_COUNT_32_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_32_BIT; }
@@ -49,8 +49,8 @@ VkPhysicalDevice Device::pickPhysicalDevice() {
 
    if (!fallback) throw std::runtime_error("No suitable GPU!");
 
-   vkGetPhysicalDeviceProperties(fallback, &deviceProperties);
-   std::cout << "[Vulkan] Picking fallback GPU: " << deviceProperties.deviceName << std::endl;
+   vkGetPhysicalDeviceProperties(fallback, &m_Properties);
+   std::cout << "[Vulkan] Picking fallback GPU: " << m_Properties.deviceName << std::endl;
    return fallback;
 }
 
@@ -85,7 +85,7 @@ void Device::createLogicalDevice() {
 
          if (!presentFamilyExists) {
             VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(m_PhysicalDevice, i, m_Surface, &presentSupport);
+            vkGetPhysicalDeviceSurfaceSupportKHR(m_PhysicalDevice, i, m_Surface->data(), &presentSupport);
             if (presentSupport) {
                m_QueueIndices[static_cast<size_t>(QueueFamily::PRESENT)] = i;
                uniqueQueueFamilies.insert(i);
@@ -163,7 +163,7 @@ void Device::createLogicalDevice() {
 }
 
 
-uint32_t Device::findMemoryType(const VkMemoryRequirements& requirements, VkMemoryPropertyFlags properties) {
+uint32_t Device::findMemoryType(const VkMemoryRequirements& requirements, VkMemoryPropertyFlags properties) const {
    VkPhysicalDeviceMemoryProperties memProperties;
    vkGetPhysicalDeviceMemoryProperties(m_PhysicalDevice, &memProperties);
 
@@ -177,47 +177,15 @@ uint32_t Device::findMemoryType(const VkMemoryRequirements& requirements, VkMemo
 }
 
 
-Swapchain Device::createSwapChain(const std::set<uint32_t>& queueIndices, VkExtent2D extent) {
+Swapchain Device::createSwapChain(const std::set<uint32_t>& queueIndices, VkExtent2D extent) const {
    VkSurfaceCapabilitiesKHR capabilities = getSurfaceCapabilities();
    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(getSurfaceFormats());
    VkPresentModeKHR presentMode = chooseSwapPresentMode(getSurfacePresentModes());
-   return Swapchain(m_LogicalDevice, queueIndices, extent, m_Surface, capabilities, surfaceFormat, presentMode);
+   return Swapchain(m_LogicalDevice, queueIndices, extent, m_Surface->data(), capabilities, surfaceFormat, presentMode);
 }
 
 
-VkDescriptorSetLayout Device::createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) {
-   VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-   layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-   layoutInfo.bindingCount = bindings.size();
-   layoutInfo.pBindings = bindings.data();
-
-   VkDescriptorSetLayout layout;
-   if (vkCreateDescriptorSetLayout(m_LogicalDevice, &layoutInfo, nullptr, &layout) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create descriptor set layout!");
-   }
-
-   return layout;
-}
-
-
-VkPipelineLayout Device::createGraphicsPipelineLayout(const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts) {
-   VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
-   pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-   pipelineLayoutInfo.setLayoutCount = descriptorSetLayouts.size();
-   pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
-   pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-   pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
-
-   VkPipelineLayout layout;
-   if (vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create pipeline layout!");
-   }
-
-   return layout;
-}
-
-
-VkFormat Device::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+VkFormat Device::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) const {
    for (VkFormat format : candidates) {
       VkFormatProperties properties;
       vkGetPhysicalDeviceFormatProperties(m_PhysicalDevice, format, &properties);

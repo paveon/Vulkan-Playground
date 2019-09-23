@@ -2,15 +2,15 @@
 #include <Engine/Core.h>
 #include <thread>
 
-int main(int argc, char* argv[]) {
+int main(int, char**) {
    std::cout << currentTime() << "[Engine] Initializing..." << std::endl;
    int result = EXIT_SUCCESS;
    try {
-      std::unique_ptr<Application> app(CreateApplication());
+      std::unique_ptr<Application> app(Application::CreateApplication());
       app->Run();
    }
    catch (const std::exception& e) {
-      std::cout << "[Exception] " << e.what() << std::endl;
+      std::cout << e.what() << std::endl;
       result = EXIT_FAILURE;
    }
 
