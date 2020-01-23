@@ -10,6 +10,8 @@ protected:
 public:
     virtual void Init() = 0;
 
+   virtual std::pair<uint32_t, uint32_t> FramebufferSize() const = 0;
+
     static std::unique_ptr<GfxContext> Create(void* windowHandle);
 };
 

@@ -3,6 +3,7 @@
 
 #include <imgui.h>
 #include <mathlib.h>
+#include <Engine/Renderer/Pipeline.h>
 
 #include "Renderer/vulkan_wrappers.h"
 #include "Input.h"
@@ -12,83 +13,78 @@
 
 class Renderer;
 
+class RenderPass;
+
 // Options and values to display/toggle from the UI
 struct UISettings {
-    bool displayModels = true;
-    bool displayLogos = true;
-    bool displayBackground = true;
-    bool animateLight = false;
-    float lightSpeed = 0.25f;
-    std::array<float, 50> frameTimes{};
-    float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
-    float lightTimer = 0.0f;
+   bool displayModels = true;
+   bool displayLogos = true;
+   bool displayBackground = true;
+   bool animateLight = false;
+   float lightSpeed = 0.25f;
+   std::array<float, 50> frameTimes{};
+   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
+   float lightTimer = 0.0f;
 };
 
 
 class ImGuiLayer : public Layer {
 private:
-    Renderer& m_Renderer;
-    vk::Sampler sampler;
-    vk::Buffer vertexBuffer;
-    vk::Buffer indexBuffer;
-    vk::DeviceMemory vertexMemory;
-    vk::DeviceMemory indexMemory;
-    int32_t vertexCount = 0;
-    int32_t indexCount = 0;
-    vk::DeviceMemory fontMemory;
-    vk::Image fontImage;
-    vk::ImageView fontView;
-    vk::PipelineCache pipelineCache;
-    vk::PipelineLayout pipelineLayout;
-    vk::Pipeline pipeline;
-    vk::DescriptorPool descriptorPool;
-    vk::DescriptorSetLayout descriptorSetLayout;
-    vk::DescriptorSets descriptorSets;
+   Renderer& m_Renderer;
+//    vk::Buffer vertexBuffer;
+//    vk::Buffer indexBuffer;
+//    vk::DeviceMemory vertexMemory;
+//    vk::DeviceMemory indexMemory;
+//    int32_t vertexCount = 0;
+//    int32_t indexCount = 0;
+   std::unique_ptr<Texture2D> m_FontData;
+   std::unique_ptr<Pipeline> m_Pipeline;
 
 public:
-    struct PushConstBlock {
-        math::vec2 scale;
-        math::vec2 translate;
-    } pushConstBlock;
+   struct PushConstBlock {
+      math::vec2 scale;
+      math::vec2 translate;
+   } pushConstBlock;
 
-    explicit ImGuiLayer(Renderer& renderer);
+   explicit ImGuiLayer(Renderer& renderer);
 
-    ~ImGuiLayer() override;
+   ~ImGuiLayer() override;
 
-    // Initialize styles, keys, etc.
-    static void init(float width, float height);
+   // Initialize styles, keys, etc.
+   static void init(float width, float height);
 
-//    // Initialize all Vulkan resources used by the ui
-//    void initResources(VkRenderPass renderPass, VkQueue copyQueue);
-//
-//    // Starts a new imGui frame and sets up windows and ui elements
-//    void newFrame(float frameTimer, bool updateFrameGraph);
-//
-//    // Update vertex and index buffer containing the imGui elements when required
-//    void updateBuffers();
-//
-//    // Draw current imGui frame into a command buffer
-//    void drawFrame(VkCommandBuffer commandBuffer);
+   // Initialize all Vulkan resources used by the ui
+   void initResources(const RenderPass& renderPass);
+
+   // Starts a new imGui frame and sets up windows and ui elements
+   void newFrame(float frameTimer, bool updateFrameGraph);
+
+   // Update vertex and index buffer containing the imGui elements when required
+   void updateBuffers();
+
+   // Draw current imGui frame into a command buffer
+   void drawFrame(VkCommandBuffer commandBuffer);
+
+   void OnAttach() override;
+
+   void OnUpdate() override {
+      ImGuiIO& io = ImGui::GetIO();
+      io.MouseDown[0] = Input::MouseButtonPressed(0);
+      io.MouseDown[1] = Input::MouseButtonPressed(1);
+
+      auto[x, y] = Input::MousePos();
+      io.MousePos = ImVec2(x, y);
+
+      //TODO
+      //io.DeltaTime = frameTimer;
+   }
 
 
-    void OnUpdate() override {
-       ImGuiIO& io = ImGui::GetIO();
-       io.MouseDown[0] = Input::MouseButtonPressed(0);
-       io.MouseDown[1] = Input::MouseButtonPressed(1);
-
-       auto[x, y] = Input::MousePos();
-       io.MousePos = ImVec2(x, y);
-
-       //TODO
-       //io.DeltaTime = frameTimer;
-    }
-
-
-    bool OnWindowResize(WindowResizeEvent& e) override {
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2(e.Width(), e.Height());
-        return true;
-    }
+   bool OnWindowResize(WindowResizeEvent& e) override {
+      ImGuiIO& io = ImGui::GetIO();
+      io.DisplaySize = ImVec2(e.Width(), e.Height());
+      return true;
+   }
 };
 
 

@@ -15,7 +15,7 @@ include_directories(extern/tinyobjloader)
 include_directories(extern/glm)
 include_directories(extern/mathlib)
 include_directories(src)
-include_directories(D:/VulkanSDK/1.1.106.0/Include)
+#include_directories(D:/VulkanSDK/1.1.106.0/Include)
 
 
 set(SOURCES
@@ -33,11 +33,17 @@ set(SOURCES
         src/Engine/ImGuiLayer.cpp
         src/Engine/Renderer/Texture.cpp
         src/Engine/Renderer/GraphicsContext.cpp
+        src/Engine/Renderer/Pipeline.cpp
+        src/Engine/Renderer/ShaderProgram.cpp
+        src/Engine/Renderer/RenderPass.cpp
 
         src/Platform/Windows/WindowWin32.cpp
         src/Platform/Windows/InputWin32.cpp
         src/Platform/Vulkan/TextureVk.cpp
         src/Platform/Vulkan/GraphicsContextVk.cpp
+        src/Platform/Vulkan/PipelineVk.cpp
+        src/Platform/Vulkan/ShaderProgramVk.cpp
+        src/Platform/Vulkan/RenderPassVk.cpp
 
         extern/mathlib/mathlib.cpp
         extern/imgui/imgui.cpp
@@ -52,11 +58,17 @@ set(HEADERS
         src/Engine/Renderer/vulkan_wrappers.h
         src/Engine/Renderer/GraphicsContext.h
         src/Engine/Renderer/Texture.h
+        src/Engine/Renderer/Pipeline.h
+        src/Engine/Renderer/ShaderProgram.h
+        src/Engine/Renderer/RenderPass.h
 
         src/Platform/Windows/WindowWin32.h
         src/Platform/Windows/InputWin32.h
         src/Platform/Vulkan/GraphicsContextVk.h
         src/Platform/Vulkan/TextureVk.h
+        src/Platform/Vulkan/PipelineVk.h
+        src/Platform/Vulkan/ShaderProgramVk.h
+        src/Platform/Vulkan/RenderPassVk.h
 
         src/Engine/Window.h
         src/Engine/Events/Event.h
@@ -78,13 +90,13 @@ set(HEADERS
         extern/mathlib/mathlib.h
         extern/imgui/imgui.h)
 
-add_library(vulkan STATIC IMPORTED GLOBAL)
-set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
+#add_library(vulkan STATIC IMPORTED GLOBAL)
+#set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
 
 add_executable(renderer ${SOURCES} ${HEADERS})
 target_link_libraries(renderer vulkan glfw ${GLFW_LIBRARIES})
 target_compile_options(renderer PRIVATE -Wall -Wextra)
-target_compile_definitions(renderer PRIVATE)
+target_compile_definitions(renderer PRIVATE BASE_DIR="${PROJECT_SOURCE_DIR}")
 
 
 

@@ -271,7 +271,7 @@ VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>&) {
 
 
 VkExtent2D chooseSwapExtent(VkExtent2D desiredExtent, const VkSurfaceCapabilitiesKHR& capabilities) {
-   if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+   if (capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max()) {
       return capabilities.currentExtent;
    } else {
       desiredExtent.width = CLAMP(capabilities.minImageExtent.width, desiredExtent.width, capabilities.maxImageExtent.width);

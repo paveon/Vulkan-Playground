@@ -69,7 +69,9 @@ public:
 
     void Run();
 
-    Window& GetWindow() { return *m_Window; }
+    static Window& GetWindow() { return *s_Application->m_Window; }
+
+    static GfxContext& GetGraphicsContext() { return s_Application->m_Window->Context(); }
 
     static std::unique_ptr<Application> CreateApplication();
 };

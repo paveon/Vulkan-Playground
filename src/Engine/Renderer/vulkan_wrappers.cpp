@@ -349,9 +349,8 @@ namespace vk {
     }
 
 
-    Instance::Instance(const std::vector<const char*>& validationLayers) {
-       const bool enableValidation = !validationLayers.empty();
-       if (enableValidation && !checkValidationLayerSupport(validationLayers)) {
+    Instance::Instance(bool enableValidation) {
+       if (enableValidation && !checkValidationLayerSupport(ArrayToVector(s_ValidationLayers))) {
           throw std::runtime_error("[Vulkan] validation layers requested, but not available!");
        }
 
@@ -372,8 +371,8 @@ namespace vk {
 
        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
        if (enableValidation) {
-          createInfo.enabledLayerCount = validationLayers.size();
-          createInfo.ppEnabledLayerNames = validationLayers.data();
+          createInfo.enabledLayerCount = s_ValidationLayers.size();
+          createInfo.ppEnabledLayerNames = s_ValidationLayers.data();
           debugCreateInfo = createDebugMsgInfo(debugCallback, nullptr);
           createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
        }

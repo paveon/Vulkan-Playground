@@ -46,7 +46,7 @@ public:
 
     virtual void* GetNativeHandle() const = 0;
 
-    const GfxContext& Context() const { return *m_Context; }
+    GfxContext& Context() { return *m_Context; }
 };
 
 

@@ -16,11 +16,6 @@
 void InitializeGLFW();
 void TerminateGLFW();
 
-static constexpr std::array<const char*, 2> s_VulkanValidationLayers = {
-        "VK_LAYER_KHRONOS_validation",
-        "VK_LAYER_LUNARG_monitor"
-};
-
 
 template<typename T, size_t N>
 std::vector<T> ArrayToVector(const std::array<T, N>& array) {

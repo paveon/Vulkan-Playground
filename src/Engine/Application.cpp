@@ -29,7 +29,7 @@ Application::~Application() {
 void Application::Init() {
    m_Window = Window::Create(800, 600, m_ApplicationName.data());
    m_Window->SetEventCallback(std::bind(&Application::OnEvent, this, std::placeholders::_1));
-   m_Renderer = std::make_unique<Renderer>(m_Window->Context());
+   m_Renderer = std::make_unique<Renderer>(static_cast<GfxContextVk&>(m_Window->Context()));
 
    std::cout << currentTime() << "[Engine] Initialized application" << std::endl;
 }

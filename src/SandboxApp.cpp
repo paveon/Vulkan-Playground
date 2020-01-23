@@ -13,7 +13,7 @@ public:
     void OnDetach() override  { std::cout << m_DebugName << "::Detached" << std::endl; }
 
     bool OnKeyPress(KeyPressEvent& e) override {
-       std::cout << m_DebugName << "::" << e << std::endl;
+       if (e.RepeatCount() < 1) std::cout << m_DebugName << "::" << e << std::endl;
        return true;
     }
 
@@ -23,9 +23,6 @@ public:
     }
 
     void OnUpdate() override {
-       if (Input::KeyPressed(IO_KEY_A)) {
-          std::cout << "A key is pressed" << std::endl;
-       }
     }
 };
 

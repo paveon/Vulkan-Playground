@@ -41,7 +41,8 @@ VkPhysicalDevice Device::pickPhysicalDevice() {
             else if (counts & VK_SAMPLE_COUNT_4_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_4_BIT; }
             else if (counts & VK_SAMPLE_COUNT_2_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_2_BIT; }
             return device;
-         } else if (!fallback) {
+         }
+         else if (!fallback) {
             fallback = device;
          }
       }
@@ -68,6 +69,7 @@ void Device::createLogicalDevice() {
    bool graphicsFamilyExists = false;
    bool presentFamilyExists = false;
    bool transferFamilyExists = false;
+   int fallbackTransferQueue = -1;
    for (uint32_t i = 0; i < queueFamilyCount; i++) {
       if (queueFamilies[i].queueCount > 0) {
          auto flags = queueFamilies[i].queueFlags;
@@ -77,10 +79,15 @@ void Device::createLogicalDevice() {
             graphicsFamilyExists = true;
          }
 
-         if (!transferFamilyExists && flags & VK_QUEUE_TRANSFER_BIT && !(flags & VK_QUEUE_GRAPHICS_BIT)) {
-            m_QueueIndices[static_cast<size_t>(QueueFamily::TRANSFER)] = i;
-            uniqueQueueFamilies.insert(i);
-            transferFamilyExists = true;
+         if (!transferFamilyExists && flags & VK_QUEUE_TRANSFER_BIT) {
+            if (!(flags & VK_QUEUE_GRAPHICS_BIT)) {
+               m_QueueIndices[static_cast<size_t>(QueueFamily::TRANSFER)] = i;
+               uniqueQueueFamilies.insert(i);
+               transferFamilyExists = true;
+            }
+            else {
+               fallbackTransferQueue = i;
+            }
          }
 
          if (!presentFamilyExists) {
@@ -100,10 +107,16 @@ void Device::createLogicalDevice() {
 
    if (!graphicsFamilyExists) {
       throw std::runtime_error("GPU does not support graphics command queue!");
-   } else if (!presentFamilyExists) {
+   }
+   else if (!presentFamilyExists) {
       throw std::runtime_error("GPU does not support present command queue!");
-   } else if (!transferFamilyExists) {
-      throw std::runtime_error("GPU does not support transfer command queue!");
+   }
+   else if (!transferFamilyExists) {
+      if (fallbackTransferQueue >= 0) {
+         m_QueueIndices[static_cast<size_t>(QueueFamily::TRANSFER)] = fallbackTransferQueue;
+         uniqueQueueFamilies.insert(fallbackTransferQueue);
+      }
+      else throw std::runtime_error("GPU does not support transfer command queue!");
    }
 
 
@@ -168,7 +181,8 @@ uint32_t Device::findMemoryType(const VkMemoryRequirements& requirements, VkMemo
    vkGetPhysicalDeviceMemoryProperties(m_PhysicalDevice, &memProperties);
 
    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-      if ((requirements.memoryTypeBits & (1UL << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+      if ((requirements.memoryTypeBits & (1UL << i)) &&
+          (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
          return i;
       }
    }
@@ -185,7 +199,8 @@ Swapchain Device::createSwapChain(const std::set<uint32_t>& queueIndices, VkExte
 }
 
 
-VkFormat Device::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) const {
+VkFormat Device::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling,
+                                     VkFormatFeatureFlags features) const {
    for (VkFormat format : candidates) {
       VkFormatProperties properties;
       vkGetPhysicalDeviceFormatProperties(m_PhysicalDevice, format, &properties);
