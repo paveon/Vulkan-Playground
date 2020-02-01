@@ -15,6 +15,8 @@ static VkFormat ShaderTypeToVkFormat(ShaderType type) {
          return VK_FORMAT_R32G32B32_SFLOAT;
       case ShaderType::Float4:
          return VK_FORMAT_R32G32B32A32_SFLOAT;
+      case ShaderType::UInt:
+         return VK_FORMAT_R8G8B8A8_UNORM;
    }
 
    throw std::runtime_error("Unknown shader data type");
@@ -116,6 +118,7 @@ PipelineVk::PipelineVk(const RenderPassVk& renderPass, const ShaderProgramVk& ve
    blendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
    blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
    blendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
+
    VkPipelineColorBlendStateCreateInfo colorBlendState = {};
    colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
    colorBlendState.attachmentCount = 1;
@@ -123,19 +126,6 @@ PipelineVk::PipelineVk(const RenderPassVk& renderPass, const ShaderProgramVk& ve
 
    VkPipelineDepthStencilStateCreateInfo depthStencil = {};
    if (enableDepthTest) {
-      /* Create depth test resources */
-      VkFormat depthFormat = device.findDepthFormat();
-      m_DepthImage = device.createImage({device.queueIndex(QueueFamily::GRAPHICS)}, gfxContext.Swapchain().Extent(), 1,
-                                        device.maxSamples(),
-                                        depthFormat, VK_IMAGE_TILING_OPTIMAL,
-                                        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-      m_DepthImageMemory = device.allocateImageMemory(m_DepthImage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-      vkBindImageMemory(device, m_DepthImage.data(), m_DepthImageMemory.data(), 0);
-      m_DepthImageView = m_DepthImage.createView(depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-      /* Transition depth test image */
-      m_DepthImage.ChangeLayout(acquisitionCmdBuffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-
       depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
       depthStencil.depthTestEnable = VK_TRUE;
       depthStencil.depthWriteEnable = VK_TRUE;
@@ -226,8 +216,8 @@ PipelineVk::PipelineVk(const RenderPassVk& renderPass, const ShaderProgramVk& ve
 
 
 void PipelineVk::Bind(VkCommandBuffer cmdBuffer, uint32_t frameIdx) const {
-   vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.data());
-
    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            m_PipelineLayout.data(), 0, 1, &m_DescriptorSets[frameIdx], 0, nullptr);
+
+   vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.data());
 }

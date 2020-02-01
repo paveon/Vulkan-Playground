@@ -29,15 +29,12 @@ public:
    const Device& GetDevice() const { return m_Device; }
 
    std::pair<uint32_t, uint32_t> FramebufferSize() const override {
-      int height, width;
-      glfwGetFramebufferSize(m_WindowHandle, &width, &height);
-      return {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+      auto extent = m_Swapchain.Extent();
+      return {extent.width, extent.height};
    }
 
    VkExtent2D FramebufferSizeVk() const {
-      int height, width;
-      glfwGetFramebufferSize(m_WindowHandle, &width, &height);
-      return {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+      return m_Swapchain.Extent();
    }
 };
 

@@ -11,6 +11,7 @@ enum class ShaderType {
    Float2,
    Float3,
    Float4,
+   UInt
 };
 
 
@@ -23,6 +24,7 @@ enum class DescriptorType {
 inline uint32_t ShaderTypeSize(ShaderType type) {
    switch (type) {
       case ShaderType::Float:
+      case ShaderType::UInt:
          return 4;
       case ShaderType::Float2:
          return 4 * 2;
@@ -73,6 +75,8 @@ public:
    virtual void BindTexture(const Texture2D& texture, uint32_t binding) const = 0;
 
    virtual void BindUniformBuffers(const std::vector<vk::Buffer>& buffers, uint32_t binding) const = 0;
+
+   virtual void PushConstants(VkCommandBuffer cmdBuffer, uint32_t offset, uint32_t size, const void* data) const = 0;
 
    static std::unique_ptr<Pipeline> Create(const RenderPass& renderPass,
                                            const ShaderProgram& vertexShader,

@@ -26,6 +26,7 @@ public:
     virtual bool OnMouseScroll(MouseScrollEvent&) { return true; }
     virtual bool OnKeyPress(KeyPressEvent&) { return true; }
     virtual bool OnKeyRelease(KeyReleaseEvent&) { return true; }
+    virtual bool OnCharacterPress(CharacterPressEvent&) { return true; }
 
     const std::string& LayerName() const { return m_DebugName; }
 };

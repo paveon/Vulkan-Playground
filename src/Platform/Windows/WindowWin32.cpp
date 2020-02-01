@@ -7,10 +7,6 @@
 #include <Engine/Events/MouseEvents.h>
 #include <Platform/Vulkan/GraphicsContextVk.h>
 
-std::unique_ptr<Window> Window::Create(uint32_t width, uint32_t height, const char* title) {
-   return std::make_unique<WindowWin32>(width, height, title);
-}
-
 
 WindowWin32::WindowWin32(uint32_t width, uint32_t height, const char* title) {
    InitializeGLFW();
@@ -79,6 +75,11 @@ WindowWin32::WindowWin32(uint32_t width, uint32_t height, const char* title) {
    glfwSetCursorPosCallback(m_Window, [](GLFWwindow* window, double x, double y) {
        auto windowWin32 = static_cast<WindowWin32*>(glfwGetWindowUserPointer(window));
        windowWin32->m_EventCallback(std::make_unique<MouseMoveEvent>(static_cast<float>(x), static_cast<float>(y)));
+   });
+
+   glfwSetCharCallback(m_Window, [](GLFWwindow* window, unsigned int keycode) {
+       auto windowWin32 = static_cast<WindowWin32*>(glfwGetWindowUserPointer(window));
+       windowWin32->m_EventCallback(std::make_unique<CharacterPressEvent>(keycode));
    });
 }
 

@@ -158,10 +158,12 @@ namespace vk {
     void Image::ChangeLayout(const CommandBuffer& cmdBuffer, VkImageLayout newLayout, VkPipelineStageFlags dstStage, VkImageAspectFlags aspectFlags) {
        VkImageMemoryBarrier barrier = s_BaseBarrier;
        barrier.oldLayout = m_CurrentLayout;
-       barrier.newLayout = newLayout,
-               barrier.image = m_Image;
+       barrier.newLayout = newLayout;
+       barrier.image = m_Image;
        barrier.subresourceRange.aspectMask = aspectFlags;
        barrier.subresourceRange.levelCount = m_MipLevels;
+       barrier.subresourceRange.baseMipLevel = 0;
+       barrier.subresourceRange.layerCount = 1;
 
        switch (m_CurrentLayout) {
           case VK_IMAGE_LAYOUT_UNDEFINED:

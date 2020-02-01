@@ -20,6 +20,8 @@ public:
        else ss << m_KeyCode;
        return ss.str();
     }
+
+    int KeyCode() const { return m_KeyCode; }
 };
 
 
@@ -54,6 +56,24 @@ public:
     EventType Type() const override { return EventType::KeyRelease; }
 
     const char* GetName() const override { return "KeyReleaseEvent"; }
+};
+
+
+class CharacterPressEvent : public KeyEvent {
+public:
+    explicit CharacterPressEvent(int keyCode) : KeyEvent(keyCode) {}
+
+    EventType Type() const override { return EventType::CharacterPress; }
+
+    const char* GetName() const override { return "CharacterPressEvent"; }
+
+    std::string ToString() const override {
+       std::ostringstream ss;
+       ss << GetName() << ": ";
+       if (m_KeyCode < 256) ss << static_cast<char>(m_KeyCode);
+       else ss << m_KeyCode;
+       return ss.str();
+    }
 };
 
 #endif //VULKAN_KEYEVENTS_H

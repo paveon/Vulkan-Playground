@@ -45,6 +45,8 @@ private:
 
     bool OnMouseMove(MouseMoveEvent&) { return true; }
 
+    bool OnCharacterPress(CharacterPressEvent&) { return true; }
+
     void ProcessEventQueue();
 
 protected:
@@ -52,9 +54,9 @@ protected:
 
     void OnEvent(std::unique_ptr<Event> e);
 
-    const Layer* PushLayer(std::unique_ptr<Layer> layer) { return m_LayerStack.PushLayer(std::move(layer)); }
+    Layer* PushLayer(std::unique_ptr<Layer> layer) { return m_LayerStack.PushLayer(std::move(layer)); }
 
-    const Layer* PushOverlay(std::unique_ptr<Layer> overlay) { return m_LayerStack.PushOverlay(std::move(overlay)); }
+    Layer* PushOverlay(std::unique_ptr<Layer> overlay) { return m_LayerStack.PushOverlay(std::move(overlay)); }
 
     std::unique_ptr<Layer> PopLayer(const Layer* layer) { return m_LayerStack.PopLayer(layer); }
 

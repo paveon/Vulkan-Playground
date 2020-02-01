@@ -12,6 +12,7 @@ const std::array<const char*, 1> Device::s_RequiredExtensions = {
 Device::Device(const vk::Instance& instance, const vk::Surface& surface) : m_Instance(&instance), m_Surface(&surface) {
    m_PhysicalDevice = pickPhysicalDevice();
    createLogicalDevice();
+   m_CommandPool = vk::CommandPool(m_LogicalDevice, GfxQueueIdx(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 }
 
 

@@ -29,6 +29,8 @@ private:
    VkSampleCountFlagBits m_MsaaSamples = VK_SAMPLE_COUNT_1_BIT;
    VkPhysicalDeviceProperties m_Properties = {};
 
+   vk::CommandPool m_CommandPool;
+
    std::vector<VkQueue> m_Queues;
    std::vector<uint32_t> m_QueueIndices;
 
@@ -42,6 +44,7 @@ private:
       m_MsaaSamples = other.m_MsaaSamples;
       m_Queues = std::move(other.m_Queues);
       m_QueueIndices = std::move(other.m_QueueIndices);
+      m_CommandPool = std::move(other.m_CommandPool);
       other.m_LogicalDevice = nullptr;
    }
 
@@ -87,7 +90,10 @@ public:
 
    uint32_t queueIndex(QueueFamily family) const { return m_QueueIndices[static_cast<size_t>(family)]; }
 
-   VkSampleCountFlagBits maxSamples() const { return m_MsaaSamples; }
+   VkSampleCountFlagBits maxSamples() const {
+      return VK_SAMPLE_COUNT_1_BIT;
+      //return m_MsaaSamples; //TODO
+   }
 
    vk::Buffer createBuffer(const std::set<uint32_t>& queueIndices, VkDeviceSize bufferSize, VkBufferUsageFlags usage,
                            VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE) const {
@@ -124,6 +130,10 @@ public:
    vk::CommandBuffer createCommandBuffer(const vk::CommandPool& pool) const {
       return vk::CommandBuffer(m_LogicalDevice, pool.data());
    }
+
+    vk::CommandBuffer createCommandBuffer() const {
+       return vk::CommandBuffer(m_LogicalDevice, m_CommandPool.data());
+    }
 
    vk::CommandBuffers createCommandBuffers(const vk::CommandPool& pool, uint32_t count) const {
       return vk::CommandBuffers(m_LogicalDevice, pool.data(), count);
@@ -289,6 +299,56 @@ public:
    VkDeviceSize size() const { return m_DataSize; }
 
    operator const vk::Buffer&() const { return data(); }
+};
+
+
+class DeviceBuffer {
+private:
+    const Device* m_Device = nullptr;
+    vk::Buffer m_Buffer;
+    vk::DeviceMemory m_BufferMemory;
+    StagingBuffer m_StagingBuffer;
+
+    void Move(DeviceBuffer& other) {
+       m_Device = other.m_Device;
+       m_Buffer = std::move(other.m_Buffer);
+       m_BufferMemory = std::move(other.m_BufferMemory);
+       m_StagingBuffer = std::move(other.m_StagingBuffer);
+    }
+
+
+public:
+    DeviceBuffer(const Device& device, const void* data, VkDeviceSize dataSize, const vk::CommandBuffer& cmdBuffer,
+                 VkBufferUsageFlags usage) :
+            m_Device(&device), m_StagingBuffer(device, data, dataSize) {
+       VkBufferUsageFlags bufferUsage = usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+       std::set<uint32_t> indices = {
+               device.queueIndex(QueueFamily::TRANSFER),
+               device.queueIndex(QueueFamily::GRAPHICS)
+       };
+       m_Buffer = device.createBuffer(indices, dataSize, bufferUsage);
+       m_BufferMemory = device.allocateBufferMemory(m_Buffer, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+       vkBindBufferMemory(device, m_Buffer.data(), m_BufferMemory.data(), 0);
+       copyBuffer(cmdBuffer, m_StagingBuffer, m_Buffer, dataSize);
+    }
+
+    DeviceBuffer() = default;
+
+    DeviceBuffer(const DeviceBuffer& other) = delete;
+
+    DeviceBuffer& operator=(const DeviceBuffer& other) = delete;
+
+    DeviceBuffer(DeviceBuffer&& other) noexcept { Move(other); }
+
+    DeviceBuffer& operator=(DeviceBuffer&& other) noexcept {
+       if (this == &other) return *this;
+       Move(other);
+       return *this;
+    }
+
+    const vk::Buffer& data() const { return m_Buffer; }
+
+    VkDeviceSize size() const { return m_StagingBuffer.size(); }
 };
 
 

@@ -52,6 +52,10 @@ constexpr int IO_KEY_GRAVE_ACCENT = 96;  /* ` */
 constexpr int IO_KEY_WORLD_1 = 161; /* non-US #1 */
 constexpr int IO_KEY_WORLD_2 = 162; /* non-US #2 */
 
+//static bool IsPrintable(int keycode) {
+//   return keycode >= IO_KEY_SPACE && keycode <= IO_KEY_WORLD_2;
+//}
+
 /* Function keys */
 constexpr int IO_KEY_ESCAPE = 256;
 constexpr int IO_KEY_ENTER = 257;
@@ -123,7 +127,5 @@ constexpr int IO_KEY_RIGHT_CONTROL = 345;
 constexpr int IO_KEY_RIGHT_ALT = 346;
 constexpr int IO_KEY_RIGHT_SUPER = 347;
 constexpr int IO_KEY_MENU = 348;
-
-constexpr int IO_KEY_LAST = IO_KEY_MENU;
 
 #endif //VULKAN_KEYCODES_H

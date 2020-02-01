@@ -31,7 +31,18 @@ class SandboxApp : public Application {
 public:
     SandboxApp() : Application("Sandbox Application") {
        PushLayer(std::make_unique<TestLayer>("Layer1"));
-       PushOverlay(std::make_unique<ImGuiLayer>(*m_Renderer));
+       ImGuiLayer* imGui = static_cast<ImGuiLayer*>(PushOverlay(std::make_unique<ImGuiLayer>(*m_Renderer)));
+
+       imGui->SetDrawCallback([](){
+           ImGui::Begin("Test window");
+           static float rotation = 0.0;
+           ImGui::SliderFloat("rotation", &rotation, 0.0f, 360.0f);
+           static float translation[] = {0.0, 0.0};
+           ImGui::SliderFloat2("position", translation, -1.0, 1.0);
+           static float color[4] = { 1.0f,1.0f,1.0f,1.0f };
+           ImGui::ColorEdit3("color", color);
+           ImGui::End();
+       });
     }
 
     ~SandboxApp() override = default;

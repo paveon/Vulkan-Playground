@@ -46,8 +46,9 @@ void Application::Run() {
 
              ProcessEventQueue();
 
-             m_Renderer->DrawFrame();
+             m_Renderer->AcquireNextImage();
              m_LayerStack.UpdateLayers();
+             m_Renderer->DrawFrame();
 
              auto drawEnd = TIME_NOW;
              auto drawTime = std::chrono::duration_cast<std::chrono::milliseconds>(drawEnd - drawStart);
@@ -87,6 +88,10 @@ void Application::ProcessEventQueue() {
       m_WindowEventQueue.pop();
 
       switch (event->Type()) {
+         case EventType::None:
+         case EventType::WindowMove:
+            return;
+
          case EventType::WindowResize:
             resizeEvent = std::move(event);
             continue;
@@ -124,8 +129,9 @@ void Application::ProcessEventQueue() {
             m_LayerStack.PropagateEvent(static_cast<KeyReleaseEvent&>(*event), &Layer::OnKeyRelease);
             break;
 
-         default:
-            break;
+         case EventType::CharacterPress:
+            OnCharacterPress(static_cast<CharacterPressEvent&>(*event));
+            m_LayerStack.PropagateEvent(static_cast<CharacterPressEvent&>(*event), &Layer::OnCharacterPress);
       }
    }
 

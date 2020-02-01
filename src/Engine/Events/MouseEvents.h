@@ -48,6 +48,9 @@ public:
        ss << GetName() << ": [" << m_OffsetX << ", " << m_OffsetY << "]";
        return ss.str();
     }
+
+    float OffsetX() const { return m_OffsetX; }
+    float OffsetY() const { return m_OffsetY; }
 };
 
 

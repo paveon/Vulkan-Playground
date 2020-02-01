@@ -8,6 +8,7 @@ set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(extern/glfw)
+include_directories(extern/vulkan/Include)
 include_directories(extern/glfw/include)
 include_directories(extern/imgui)
 include_directories(extern/stb)
@@ -38,7 +39,6 @@ set(SOURCES
         src/Engine/Renderer/RenderPass.cpp
 
         src/Platform/Windows/WindowWin32.cpp
-        src/Platform/Windows/InputWin32.cpp
         src/Platform/Vulkan/TextureVk.cpp
         src/Platform/Vulkan/GraphicsContextVk.cpp
         src/Platform/Vulkan/PipelineVk.cpp
@@ -49,7 +49,7 @@ set(SOURCES
         extern/imgui/imgui.cpp
         extern/imgui/imgui_draw.cpp
         extern/imgui/imgui_widgets.cpp
-        extern/imgui/imgui_demo.cpp)
+        extern/imgui/imgui_demo.cpp src/Engine/Input.cpp)
 
 set(HEADERS
         src/Engine/Renderer/utils.h
@@ -90,8 +90,8 @@ set(HEADERS
         extern/mathlib/mathlib.h
         extern/imgui/imgui.h)
 
-#add_library(vulkan STATIC IMPORTED GLOBAL)
-#set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
+add_library(vulkan STATIC IMPORTED GLOBAL)
+set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
 
 add_executable(renderer ${SOURCES} ${HEADERS})
 target_link_libraries(renderer vulkan glfw ${GLFW_LIBRARIES})

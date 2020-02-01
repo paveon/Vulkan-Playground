@@ -15,183 +15,117 @@ class Renderer;
 
 class RenderPass;
 
-// Options and values to display/toggle from the UI
-struct UISettings {
-   bool displayModels = true;
-   bool displayLogos = true;
-   bool displayBackground = true;
-   bool animateLight = false;
-   float lightSpeed = 0.25f;
-   std::array<float, 50> frameTimes{};
-   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
-   float lightTimer = 0.0f;
-};
-
-
 class ImGuiLayer : public Layer {
 private:
-   Renderer& m_Renderer;
-//    vk::Buffer vertexBuffer;
-//    vk::Buffer indexBuffer;
-//    vk::DeviceMemory vertexMemory;
-//    vk::DeviceMemory indexMemory;
-//    int32_t vertexCount = 0;
-//    int32_t indexCount = 0;
-   std::unique_ptr<Texture2D> m_FontData;
-   std::unique_ptr<Pipeline> m_Pipeline;
+    using DrawCallbackFunc = void (*)();
+
+    Renderer& m_Renderer;
+    std::vector<vk::Buffer> m_VertexBuffers;
+    std::vector<vk::Buffer> m_IndexBuffers;
+    std::vector<vk::DeviceMemory> m_VertexMemories;
+    std::vector<vk::DeviceMemory> m_IndexMemories;
+
+    std::unique_ptr<Texture2D> m_FontData;
+    std::unique_ptr<Pipeline> m_Pipeline;
+
+    DrawCallbackFunc m_DrawCallback = []() {};
+
+    // Initialize styles, keys, etc.
+    static void ConfigureImGui(const std::pair<uint32_t, uint32_t>& framebufferSize);
+
+    // Initialize all Vulkan resources used by the ui
+    void InitResources(const RenderPass& renderPass);
 
 public:
-   struct PushConstBlock {
-      math::vec2 scale;
-      math::vec2 translate;
-   } pushConstBlock;
 
-   explicit ImGuiLayer(Renderer& renderer);
+    struct PushConstBlock {
+        math::vec2 scale;
+        math::vec2 translate;
+    } pushConstBlock;
 
-   ~ImGuiLayer() override;
+    explicit ImGuiLayer(Renderer& renderer);
 
-   // Initialize styles, keys, etc.
-   static void init(float width, float height);
+    ~ImGuiLayer() override;
 
-   // Initialize all Vulkan resources used by the ui
-   void initResources(const RenderPass& renderPass);
+    void SetDrawCallback(DrawCallbackFunc cbFunc) { m_DrawCallback = cbFunc; }
 
-   // Starts a new imGui frame and sets up windows and ui elements
-   void newFrame(float frameTimer, bool updateFrameGraph);
+    // Starts a new imGui frame and sets up windows and ui elements
+    void NewFrame();
 
-   // Update vertex and index buffer containing the imGui elements when required
-   void updateBuffers();
+    // Update vertex and index buffer containing the imGui elements when required
+    void UpdateBuffers(size_t frameIndex);
 
-   // Draw current imGui frame into a command buffer
-   void drawFrame(VkCommandBuffer commandBuffer);
+    // Draw current ImGui frame into a command buffer
+    void DrawFrame(VkCommandBuffer commandBuffer, size_t index);
 
-   void OnAttach() override;
+    void OnAttach() override;
 
-   void OnUpdate() override {
-      ImGuiIO& io = ImGui::GetIO();
-      io.MouseDown[0] = Input::MouseButtonPressed(0);
-      io.MouseDown[1] = Input::MouseButtonPressed(1);
+    void OnUpdate() override;
 
-      auto[x, y] = Input::MousePos();
-      io.MousePos = ImVec2(x, y);
+    bool OnMouseScroll(MouseScrollEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       io.MouseWheel = e.OffsetY() / 2.0f;
+       io.MouseWheelH = e.OffsetX() / 2.0f;
+       e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+       return true;
+    }
 
-      //TODO
-      //io.DeltaTime = frameTimer;
-   }
+    bool OnMouseMove(MouseMoveEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       io.MousePos = ImVec2(e.X(), e.Y());
+       e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+       return true;
+    }
 
+    bool OnMouseButtonPress(MouseButtonPressEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       io.MouseDown[e.Button()] = true;
+       e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+       return true;
+    }
 
-   bool OnWindowResize(WindowResizeEvent& e) override {
-      ImGuiIO& io = ImGui::GetIO();
-      io.DisplaySize = ImVec2(e.Width(), e.Height());
-      return true;
-   }
+    bool OnMouseButtonRelease(MouseButtonReleaseEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       io.MouseDown[e.Button()] = false;
+       e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+       return true;
+    }
+
+    bool OnKeyPress(KeyPressEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       int keycode = e.KeyCode();
+       io.KeysDown[keycode] = true;
+
+       io.KeyCtrl = io.KeysDown[IO_KEY_LEFT_CONTROL] || io.KeysDown[IO_KEY_RIGHT_CONTROL];
+       io.KeyShift = io.KeysDown[IO_KEY_LEFT_SHIFT] || io.KeysDown[IO_KEY_RIGHT_SHIFT];
+       io.KeyAlt = io.KeysDown[IO_KEY_LEFT_ALT] || io.KeysDown[IO_KEY_RIGHT_ALT];
+       io.KeySuper = io.KeysDown[IO_KEY_LEFT_SUPER] || io.KeysDown[IO_KEY_RIGHT_SUPER];
+
+       e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+       return true;
+    }
+
+    bool OnKeyRelease(KeyReleaseEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       io.KeysDown[e.KeyCode()] = false;
+       e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+       return true;
+    }
+
+    bool OnCharacterPress(CharacterPressEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       io.AddInputCharacter(e.KeyCode());
+
+       e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+       return true;
+    }
+
+    bool OnWindowResize(WindowResizeEvent& e) override {
+       ImGuiIO& io = ImGui::GetIO();
+       io.DisplaySize = ImVec2(e.Width(), e.Height());
+       return true;
+    }
 };
-
-
-
-
-// ----------------------------------------------------------------------------
-// VulkanExample
-// ----------------------------------------------------------------------------
-
-//class VulkanExample {
-//public:
-//    uint32_t frameCounter = 0;
-//
-//    std::unique_ptr<ImGUI> imGui = nullptr;
-//    bool prepared = false;
-//
-//    void buildCommandBuffers() {
-//       VkCommandBufferBeginInfo cmdBufInfo = vks::initializers::commandBufferBeginInfo();
-//
-//       VkClearValue clearValues[2];
-//       clearValues[0].color = {{0.2f, 0.2f, 0.2f, 1.0f}};
-//       clearValues[1].depthStencil = {1.0f, 0};
-//
-//       VkRenderPassBeginInfo renderPassBeginInfo = vks::initializers::renderPassBeginInfo();
-//       renderPassBeginInfo.renderPass = renderPass;
-//       renderPassBeginInfo.renderArea.offset.x = 0;
-//       renderPassBeginInfo.renderArea.offset.y = 0;
-//       renderPassBeginInfo.renderArea.extent.width = 100;
-//       renderPassBeginInfo.renderArea.extent.height = 100;
-//       renderPassBeginInfo.clearValueCount = 2;
-//       renderPassBeginInfo.pClearValues = clearValues;
-//
-//       imGui->newFrame(this, (frameCounter == 0));
-//
-//       imGui->updateBuffers();
-//
-//       for (int32_t i = 0; i < drawCmdBuffers.size(); ++i) {
-//          // Set target frame buffer
-//          renderPassBeginInfo.framebuffer = frameBuffers[i];
-//
-//          VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[i], &cmdBufInfo));
-//
-//          vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-//
-//          VkViewport viewport = vks::initializers::viewport((float) width, (float) height, 0.0f, 1.0f);
-//          vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
-//
-//          VkRect2D scissor = vks::initializers::rect2D(width, height, 0, 0);
-//          vkCmdSetScissor(drawCmdBuffers[i], 0, 1, &scissor);
-//
-//          // Render scene
-//          vkCmdBindDescriptorSets(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-//          vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-//
-//          // Render imGui
-//          imGui->drawFrame(drawCmdBuffers[i]);
-//
-//          vkCmdEndRenderPass(drawCmdBuffers[i]);
-//
-//          VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[i]));
-//       }
-//    }
-//
-//    void draw() {
-//       VulkanExampleBase::prepareFrame();
-//       buildCommandBuffers();
-//       submitInfo.commandBufferCount = 1;
-//       submitInfo.pCommandBuffers = &drawCmdBuffers[currentBuffer];
-//       VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
-//       VulkanExampleBase::submitFrame();
-//    }
-//
-//    void prepareImGui() {
-//       imGui = std::make_unique<ImGui>();
-//       imGui->init((float) 100 (float) 100);
-//       imGui->initResources(renderPass, queue);
-//    }
-//
-//    void prepare() {
-//       prepareImGui();
-//       buildCommandBuffers();
-//       prepared = true;
-//    }
-//
-//    virtual void render() {
-//       if (!prepared)
-//          return;
-//
-//       // Update imGui
-//       ImGuiIO& io = ImGui::GetIO();
-//
-//       io.DisplaySize = ImVec2((float) width, (float) height);
-//       io.DeltaTime = frameTimer;
-//
-//       io.MousePos = ImVec2(mousePos.x, mousePos.y);
-//       io.MouseDown[0] = mouseButtons.left;
-//       io.MouseDown[1] = mouseButtons.right;
-//
-//       draw();
-//    }
-//
-//    virtual void mouseMoved(double x, double y, bool& handled) {
-//       ImGuiIO& io = ImGui::GetIO();
-//       handled = io.WantCaptureMouse;
-//    }
-//
-//};
 
 
 #endif //VULKAN_IMGUILAYER_H
