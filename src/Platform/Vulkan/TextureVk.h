@@ -6,9 +6,9 @@
 
 class Texture2DVk : public Texture2D {
 private:
-   vk::Image m_TextureImage;
-   vk::DeviceMemory m_TextureMemory;
-   vk::ImageView m_TextureView;
+   vk::Image* m_TextureImage;
+   vk::DeviceMemory* m_TextureMemory;
+   vk::ImageView* m_TextureView;
 
 public:
    Texture2DVk(unsigned char* data, int width, int height, int channels = 4) :
@@ -16,7 +16,7 @@ public:
 
    void Upload() override;
 
-   const vk::ImageView& View() const { return m_TextureView; }
+   auto View() const -> const vk::ImageView& { return *m_TextureView; }
 };
 
 

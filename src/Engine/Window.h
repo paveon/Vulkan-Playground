@@ -28,15 +28,15 @@ public:
 
     virtual ~Window() = default;
 
-    static std::unique_ptr<Window> Create(uint32_t width, uint32_t height, const char* title);
+    static auto Create(uint32_t width, uint32_t height, const char* title) -> std::unique_ptr<Window>;
 
     virtual void OnUpdate() = 0;
 
-    uint32_t Width() const { return m_Width; };
+    auto Width() const -> uint32_t { return m_Width; };
 
-    uint32_t Height() const { return m_Height; };
+    auto Height() const -> uint32_t { return m_Height; };
 
-    std::pair<uint32_t, uint32_t> Size() const { return std::make_pair(m_Width, m_Height); }
+    auto Size() const -> std::pair<uint32_t, uint32_t> { return std::make_pair(m_Width, m_Height); }
 
     virtual void SetEventCallback(const EventCallbackFn& callback) = 0;
 
@@ -44,9 +44,9 @@ public:
 
     virtual void VSync() const = 0;
 
-    virtual void* GetNativeHandle() const = 0;
+    virtual auto GetNativeHandle() const -> void* = 0;
 
-    GfxContext& Context() { return *m_Context; }
+    auto Context() -> GfxContext& { return *m_Context; }
 };
 
 

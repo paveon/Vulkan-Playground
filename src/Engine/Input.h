@@ -19,7 +19,9 @@ protected:
     virtual std::pair<float, float> impl_MousePos() const = 0;
 
 public:
-   static void InitInputSubsystem();
+    static void InitInputSubsystem();
+
+    virtual ~Input() = default;
 
     static bool KeyPressed(int keycode) { return s_Instance->impl_KeyPressed(keycode); }
 

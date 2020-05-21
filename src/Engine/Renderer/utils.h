@@ -11,60 +11,71 @@
 
 
 #define TIME_NOW std::chrono::steady_clock::now()
-#define CLAMP(lower_bound, value, upper_bound) std::max((lower_bound), std::min((upper_bound), (value)));
+#define CLAMP(lower_bound, value, upper_bound) std::max((lower_bound), std::min((upper_bound), (value)))
 
 void InitializeGLFW();
+
 void TerminateGLFW();
 
 
 template<typename T, size_t N>
-std::vector<T> ArrayToVector(const std::array<T, N>& array) {
-   return std::move(std::vector<T>(array.cbegin(), array.cend()));
+auto ArrayToVector(const std::array<T, N> &array) -> std::vector<T> {
+    return std::move(std::vector<T>(array.cbegin(), array.cend()));
 }
 
 
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
-                                      const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-                                      const VkAllocationCallbacks* pAllocator,
-                                      VkDebugUtilsMessengerEXT* pDebugMessenger);
+auto CreateDebugUtilsMessengerEXT(VkInstance instance,
+                                  const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
+                                  const VkAllocationCallbacks *pAllocator,
+                                  VkDebugUtilsMessengerEXT *pDebugMessenger) -> VkResult;
 
 
 void DestroyDebugUtilsMessengerEXT(VkInstance instance,
                                    VkDebugUtilsMessengerEXT debugMessenger,
-                                   const VkAllocationCallbacks* pAllocator);
+                                   const VkAllocationCallbacks *pAllocator);
 
 
-VkDebugUtilsMessengerCreateInfoEXT createDebugMsgInfo(PFN_vkDebugUtilsMessengerCallbackEXT callback, void* data);
+auto createDebugMsgInfo(
+        PFN_vkDebugUtilsMessengerCallbackEXT callback,
+        void *data) -> VkDebugUtilsMessengerCreateInfoEXT;
 
-VkDebugUtilsMessengerEXT setupDebugMessenger(VkInstance instance);
+auto setupDebugMessenger(VkInstance instance) -> VkDebugUtilsMessengerEXT;
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+VKAPI_ATTR auto VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
         VkDebugUtilsMessageTypeFlagsEXT messageType,
-        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-        void* pUserData);
+        const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+        void *pUserData) -> VkBool32;
 
-bool checkValidationLayerSupport(const std::vector<const char*>& requiredLayers);
+auto checkValidationLayerSupport(const std::vector<const char *> &requiredLayers) -> bool;
 
-std::vector<const char*> getRequiredVulkanExtensions(bool enableValidation);
+auto getRequiredVulkanExtensions(bool enableValidation) -> std::vector<const char *>;
 
-VkInstance createVulkanInstance(const std::vector<const char*>& validationLayers);
+auto createVulkanInstance(const std::vector<const char *> &validationLayers) -> VkInstance;
 
-std::vector<char> readFile(const std::string& filename);
+auto readFile(const std::string &filename) -> std::vector<char>;
 
-VkImageMemoryBarrier
-imageBarrier(VkImage image, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout);
+auto imageBarrier(VkImage image,
+                  VkAccessFlags srcAccessMask,
+                  VkAccessFlags dstAccessMask,
+                  VkImageLayout oldLayout,
+                  VkImageLayout newLayout) -> VkImageMemoryBarrier;
 
-void copyBuffer(const vk::CommandBuffer& cmdBuffer, const vk::Buffer& srcBuffer, const vk::Buffer& dstBuffer, VkDeviceSize size);
+void copyBuffer(const vk::CommandBuffer &cmdBuffer,
+                const vk::Buffer &srcBuffer,
+                const vk::Buffer &dstBuffer,
+                VkDeviceSize size);
 
-void copyBufferToImage(const vk::CommandBuffer& cmdBuffer, const vk::Buffer& buffer, const vk::Image& image);
+void copyBufferToImage(const vk::CommandBuffer &cmdBuffer, const vk::Buffer &buffer, const vk::Image &image);
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+auto chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) -> VkSurfaceFormatKHR;
 
-VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+auto chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes) -> VkPresentModeKHR;
 
-VkExtent2D chooseSwapExtent(VkExtent2D desiredExtent, const VkSurfaceCapabilitiesKHR& capabilities);
+auto chooseSwapExtent(VkExtent2D desiredExtent, const VkSurfaceCapabilitiesKHR &capabilities) -> VkExtent2D;
 
-bool hasStencilComponent(VkFormat format);
+auto hasStencilComponent(VkFormat format) -> bool;
+
+auto roundUp(size_t number, size_t multiple) -> size_t;
 
 #endif //VULKAN_UTILS_H

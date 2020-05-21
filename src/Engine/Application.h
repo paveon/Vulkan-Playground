@@ -15,7 +15,7 @@
 
 class Application {
 private:
-    static Application* s_Application;
+    static Application *s_Application;
 
     const std::string m_ApplicationName;
 
@@ -29,53 +29,53 @@ private:
 
     void Init();
 
-    bool OnWindowClose(WindowCloseEvent& e);
+    void OnEvent(std::unique_ptr<Event> e);
 
-    bool OnWindowResize(WindowResizeEvent& e);
+    auto OnWindowClose(WindowCloseEvent &e) -> bool;
 
-    bool OnMouseButtonPress(MouseButtonPressEvent&) { return true; }
+    auto OnWindowResize(WindowResizeEvent &e) -> bool;
 
-    bool OnMouseButtonRelease(MouseButtonReleaseEvent&) { return true; }
+    auto OnMouseButtonPress(MouseButtonPressEvent &) -> bool { return true; }
 
-    bool OnMouseScroll(MouseScrollEvent&) { return true; }
+    auto OnMouseButtonRelease(MouseButtonReleaseEvent &) -> bool { return true; }
 
-    bool OnKeyPress(KeyPressEvent&) { return true; }
+    auto OnMouseScroll(MouseScrollEvent &) -> bool { return true; }
 
-    bool OnKeyRelease(KeyReleaseEvent&) { return true; }
+    auto OnKeyPress(KeyPressEvent &) -> bool { return true; }
 
-    bool OnMouseMove(MouseMoveEvent&) { return true; }
+    auto OnKeyRelease(KeyReleaseEvent &) -> bool { return true; }
 
-    bool OnCharacterPress(CharacterPressEvent&) { return true; }
+    auto OnMouseMove(MouseMoveEvent &) -> bool { return true; }
+
+    auto OnCharacterPress(CharacterPressEvent &) -> bool { return true; }
 
     void ProcessEventQueue();
 
 protected:
-    explicit Application(const char* name);
+    explicit Application(const char *name);
 
-    void OnEvent(std::unique_ptr<Event> e);
+    auto PushLayer(std::unique_ptr<Layer> layer) -> Layer * { return m_LayerStack.PushLayer(std::move(layer)); }
 
-    Layer* PushLayer(std::unique_ptr<Layer> layer) { return m_LayerStack.PushLayer(std::move(layer)); }
+    auto PushOverlay(std::unique_ptr<Layer> overlay) -> Layer * { return m_LayerStack.PushOverlay(std::move(overlay)); }
 
-    Layer* PushOverlay(std::unique_ptr<Layer> overlay) { return m_LayerStack.PushOverlay(std::move(overlay)); }
+    auto PopLayer(const Layer *layer) -> std::unique_ptr<Layer> { return m_LayerStack.PopLayer(layer); }
 
-    std::unique_ptr<Layer> PopLayer(const Layer* layer) { return m_LayerStack.PopLayer(layer); }
-
-    std::unique_ptr<Layer> PopOverlay(const Layer* overlay) { return m_LayerStack.PopOverlay(overlay); }
+    auto PopOverlay(const Layer *overlay) -> std::unique_ptr<Layer> { return m_LayerStack.PopOverlay(overlay); }
 
     std::unique_ptr<Renderer> m_Renderer = nullptr;
 
 public:
     virtual ~Application();
 
-    static Application& Get() { return *s_Application; }
+    static auto Get() -> Application & { return *s_Application; }
+
+    static auto GetWindow() -> Window & { return *s_Application->m_Window; }
+
+    static auto GetGraphicsContext() -> GfxContext & { return s_Application->m_Window->Context(); }
+
+    static auto CreateApplication() -> std::unique_ptr<Application>;
 
     void Run();
-
-    static Window& GetWindow() { return *s_Application->m_Window; }
-
-    static GfxContext& GetGraphicsContext() { return s_Application->m_Window->Context(); }
-
-    static std::unique_ptr<Application> CreateApplication();
 };
 
 

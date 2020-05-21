@@ -7,20 +7,19 @@
 
 class RenderPassVk : public RenderPass {
 private:
-   VkRenderPass m_RenderPass = nullptr;
+    VkRenderPass m_RenderPass = nullptr;
 
 public:
-   RenderPassVk();
+    RenderPassVk();
 
-   ~RenderPassVk() override;
+    ~RenderPassVk() override;
 
-   VkRenderPass& GetVkHandle() override { return m_RenderPass; };
+    auto VkHandle() const -> const void* override { return m_RenderPass; };
 
-   const VkRenderPass* ptr() const noexcept { return &m_RenderPass; }
+    auto ptr() const noexcept -> const VkRenderPass * { return &m_RenderPass; }
 
-   const VkRenderPass& data() const noexcept { return m_RenderPass; }
+    auto data() const noexcept -> const VkRenderPass & { return m_RenderPass; }
 };
-
 
 
 #endif //VULKAN_RENDERPASSVK_H

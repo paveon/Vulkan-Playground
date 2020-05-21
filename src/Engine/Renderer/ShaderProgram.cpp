@@ -4,7 +4,7 @@
 #include "renderer.h"
 
 
-std::unique_ptr<ShaderProgram> ShaderProgram::Create(const char* filepath) {
+auto ShaderProgram::Create(const char* filepath) -> std::unique_ptr<ShaderProgram> {
    switch (Renderer::GetCurrentAPI()) {
       case GraphicsAPI::VULKAN:
          return std::make_unique<ShaderProgramVk>(filepath);

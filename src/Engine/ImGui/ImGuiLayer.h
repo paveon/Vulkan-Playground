@@ -5,11 +5,11 @@
 #include <mathlib.h>
 #include <Engine/Renderer/Pipeline.h>
 
-#include "Renderer/vulkan_wrappers.h"
-#include "Input.h"
-#include "Layer.h"
-#include "KeyCodes.h"
-#include "MouseButtonCodes.h"
+#include "Engine/Renderer/vulkan_wrappers.h"
+#include "Engine/Input.h"
+#include "Engine/Layer.h"
+#include "Engine/KeyCodes.h"
+#include "Engine/MouseButtonCodes.h"
 
 class Renderer;
 
@@ -24,9 +24,15 @@ private:
     std::vector<vk::Buffer> m_IndexBuffers;
     std::vector<vk::DeviceMemory> m_VertexMemories;
     std::vector<vk::DeviceMemory> m_IndexMemories;
+    vk::DescriptorPool* m_DescriptorPool;
+    VkRenderPass m_RenderPass = nullptr;
 
-    std::unique_ptr<Texture2D> m_FontData;
-    std::unique_ptr<Pipeline> m_Pipeline;
+    vk::CommandPool* m_CmdPool;
+    vk::CommandBuffers* m_CmdBuffers;
+    std::vector<vk::Framebuffer*> m_Framebuffers;
+
+//    std::unique_ptr<Texture2D> m_FontData;
+//    std::unique_ptr<Pipeline> m_Pipeline;
 
     DrawCallbackFunc m_DrawCallback = []() {};
 
@@ -49,20 +55,17 @@ public:
 
     void SetDrawCallback(DrawCallbackFunc cbFunc) { m_DrawCallback = cbFunc; }
 
-    // Starts a new imGui frame and sets up windows and ui elements
-    void NewFrame();
-
     // Update vertex and index buffer containing the imGui elements when required
     void UpdateBuffers(size_t frameIndex);
 
     // Draw current ImGui frame into a command buffer
-    void DrawFrame(VkCommandBuffer commandBuffer, size_t index);
+    auto RecordBuffer(size_t index) -> VkCommandBuffer;
 
     void OnAttach() override;
 
-    void OnUpdate() override;
+    auto OnDraw(uint32_t imageIndex) -> VkCommandBuffer override;
 
-    bool OnMouseScroll(MouseScrollEvent& e) override {
+    auto OnMouseScroll(MouseScrollEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        io.MouseWheel = e.OffsetY() / 2.0f;
        io.MouseWheelH = e.OffsetX() / 2.0f;
@@ -70,28 +73,28 @@ public:
        return true;
     }
 
-    bool OnMouseMove(MouseMoveEvent& e) override {
+    auto OnMouseMove(MouseMoveEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        io.MousePos = ImVec2(e.X(), e.Y());
        e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
        return true;
     }
 
-    bool OnMouseButtonPress(MouseButtonPressEvent& e) override {
+    auto OnMouseButtonPress(MouseButtonPressEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        io.MouseDown[e.Button()] = true;
        e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
        return true;
     }
 
-    bool OnMouseButtonRelease(MouseButtonReleaseEvent& e) override {
+    auto OnMouseButtonRelease(MouseButtonReleaseEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        io.MouseDown[e.Button()] = false;
        e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
        return true;
     }
 
-    bool OnKeyPress(KeyPressEvent& e) override {
+    auto OnKeyPress(KeyPressEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        int keycode = e.KeyCode();
        io.KeysDown[keycode] = true;
@@ -105,14 +108,14 @@ public:
        return true;
     }
 
-    bool OnKeyRelease(KeyReleaseEvent& e) override {
+    auto OnKeyRelease(KeyReleaseEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        io.KeysDown[e.KeyCode()] = false;
        e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
        return true;
     }
 
-    bool OnCharacterPress(CharacterPressEvent& e) override {
+    auto OnCharacterPress(CharacterPressEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        io.AddInputCharacter(e.KeyCode());
 
@@ -120,7 +123,7 @@ public:
        return true;
     }
 
-    bool OnWindowResize(WindowResizeEvent& e) override {
+    auto OnWindowResize(WindowResizeEvent& e) -> bool override {
        ImGuiIO& io = ImGui::GetIO();
        io.DisplaySize = ImVec2(e.Width(), e.Height());
        return true;

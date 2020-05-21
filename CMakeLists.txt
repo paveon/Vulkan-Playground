@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(Vulkan)
+project(Game_Engine)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
@@ -18,86 +18,38 @@ include_directories(extern/mathlib)
 include_directories(src)
 #include_directories(D:/VulkanSDK/1.1.106.0/Include)
 
+file(GLOB_RECURSE HEADERS_FILES "src/*.h")
+file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
+
 
 set(SOURCES
-        src/SandboxApp.cpp
-
-        src/Engine/Renderer/renderer.cpp
-        src/Engine/Renderer/utils.cpp
-        src/Engine/Renderer/Device.cpp
-        src/Engine/Renderer/vulkan_wrappers.cpp
-
-        src/Engine/Window.cpp
-        src/Engine/Application.cpp
-        src/Engine/EntryPoint.cpp
-        src/Engine/LayerStack.cpp
-        src/Engine/ImGuiLayer.cpp
-        src/Engine/Renderer/Texture.cpp
-        src/Engine/Renderer/GraphicsContext.cpp
-        src/Engine/Renderer/Pipeline.cpp
-        src/Engine/Renderer/ShaderProgram.cpp
-        src/Engine/Renderer/RenderPass.cpp
-
-        src/Platform/Windows/WindowWin32.cpp
-        src/Platform/Vulkan/TextureVk.cpp
-        src/Platform/Vulkan/GraphicsContextVk.cpp
-        src/Platform/Vulkan/PipelineVk.cpp
-        src/Platform/Vulkan/ShaderProgramVk.cpp
-        src/Platform/Vulkan/RenderPassVk.cpp
+        ${SOURCE_FILES}
 
         extern/mathlib/mathlib.cpp
         extern/imgui/imgui.cpp
         extern/imgui/imgui_draw.cpp
         extern/imgui/imgui_widgets.cpp
-        extern/imgui/imgui_demo.cpp src/Engine/Input.cpp)
+        extern/imgui/imgui_demo.cpp)
 
 set(HEADERS
-        src/Engine/Renderer/utils.h
-        src/Engine/Renderer/Device.h
-        src/Engine/Renderer/renderer.h
-        src/Engine/Renderer/vulkan_wrappers.h
-        src/Engine/Renderer/GraphicsContext.h
-        src/Engine/Renderer/Texture.h
-        src/Engine/Renderer/Pipeline.h
-        src/Engine/Renderer/ShaderProgram.h
-        src/Engine/Renderer/RenderPass.h
-
-        src/Platform/Windows/WindowWin32.h
-        src/Platform/Windows/InputWin32.h
-        src/Platform/Vulkan/GraphicsContextVk.h
-        src/Platform/Vulkan/TextureVk.h
-        src/Platform/Vulkan/PipelineVk.h
-        src/Platform/Vulkan/ShaderProgramVk.h
-        src/Platform/Vulkan/RenderPassVk.h
-
-        src/Engine/Window.h
-        src/Engine/Events/Event.h
-        src/Engine/Events/KeyEvents.h
-        src/Engine/Events/MouseEvents.h
-        src/Engine/Events/WindowEvents.h
-
-        src/Engine/Core.h
-        src/Engine/Application.h
-        src/Engine/Include/Engine.h
-        src/Engine/EntryPoint.h
-        src/Engine/Layer.h
-        src/Engine/LayerStack.h
-        src/Engine/ImGuiLayer.h
-        src/Engine/Input.h
-        src/Engine/KeyCodes.h
-        src/Engine/MouseButtonCodes.h
+        ${HEADER_FILES}
 
         extern/mathlib/mathlib.h
         extern/imgui/imgui.h)
 
-add_library(vulkan STATIC IMPORTED GLOBAL)
-set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
 
-add_executable(renderer ${SOURCES} ${HEADERS})
-target_link_libraries(renderer vulkan glfw ${GLFW_LIBRARIES})
-target_compile_options(renderer PRIVATE -Wall -Wextra)
-target_compile_definitions(renderer PRIVATE BASE_DIR="${PROJECT_SOURCE_DIR}")
+find_package(Vulkan REQUIRED)
 
+#add_library(vulkan STATIC IMPORTED GLOBAL)
+#set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
+
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+target_link_libraries(${PROJECT_NAME} Vulkan::Vulkan glfw ${GLFW_LIBRARIES})
+target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+target_compile_definitions(${PROJECT_NAME} PRIVATE BASE_DIR="${PROJECT_SOURCE_DIR}")
+target_include_directories(${PROJECT_NAME} PUBLIC ${Vulkan_INCLUDE_DIRS}/vulkan)
+
+#message(${Vulkan_INCLUDE_DIRS})
 
 
 
@@ -123,11 +75,11 @@ add_custom_target(
         DEPENDS ${SPIRV_BINARY_FILES}
 )
 
-add_dependencies(renderer Shaders)
+add_dependencies(${PROJECT_NAME} Shaders)
 
-add_custom_command(TARGET renderer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:renderer>/shaders/"
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders/"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${PROJECT_BINARY_DIR}/shaders"
-        "$<TARGET_FILE_DIR:renderer>/shaders"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
         )

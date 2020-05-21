@@ -36,18 +36,23 @@ protected:
     Event() = default;
 
 public:
-    virtual uint32_t CategoryFlags() const = 0;
-    virtual EventType Type() const = 0;
-    virtual const char* GetName() const = 0;
-    virtual std::string ToString() const { return GetName(); }
+    virtual ~Event() = default;
 
-    bool HasCategories(uint32_t categoryFlags) { return CategoryFlags() &categoryFlags; }
+    virtual auto CategoryFlags() const -> uint32_t = 0;
+
+    virtual auto Type() const -> EventType = 0;
+
+    virtual auto GetName() const -> const char * = 0;
+
+    virtual auto ToString() const -> std::string { return GetName(); }
+
+    auto HasCategories(uint32_t categoryFlags) const -> bool { return CategoryFlags() & categoryFlags; }
 
     bool Handled = false;
 };
 
 
-inline std::ostream& operator<<(std::ostream& out, const Event& e) {
+inline auto operator<<(std::ostream &out, const Event &e) -> std::ostream & {
     out << e.ToString();
     return out;
 }

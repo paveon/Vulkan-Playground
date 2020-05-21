@@ -1,14 +1,12 @@
-#ifndef VULKAN_INPUTWIN32_H
-#define VULKAN_INPUTWIN32_H
+#ifndef VULKAN_INPUT_LINUX_H
+#define VULKAN_INPUT_LINUX_H
 
-#include <windef.h>
-#include <winuser.h>
 #include "Engine/Application.h"
 #include "Engine/Input.h"
 #include <GLFW/glfw3.h>
 
 
-class InputWin32 : public Input {
+class InputLinux : public Input {
 protected:
     auto impl_KeyPressed(int keycode) const -> bool override {
 //       SHORT state = GetAsyncKeyState(keycode);
@@ -42,4 +40,4 @@ protected:
 };
 
 
-#endif //VULKAN_INPUTWIN32_H
+#endif //VULKAN_INPUT_LINUX_H

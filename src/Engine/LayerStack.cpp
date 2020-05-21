@@ -1,7 +1,7 @@
 #include "LayerStack.h"
 
 
-std::unique_ptr<Layer> LayerStack::PopLayer(const Layer* layer) {
+auto LayerStack::PopLayer(const Layer* layer) -> std::unique_ptr<Layer> {
    auto it = std::find_if(m_Layers.begin(), m_Layers.end(), [&](const auto& item) { return item.get() == layer; });
    if (it != m_Layers.end()) {
       std::unique_ptr<Layer> tmp(std::move(*it));
@@ -14,7 +14,7 @@ std::unique_ptr<Layer> LayerStack::PopLayer(const Layer* layer) {
 }
 
 
-std::unique_ptr<Layer> LayerStack::PopOverlay(const Layer* overlay) {
+auto LayerStack::PopOverlay(const Layer* overlay) -> std::unique_ptr<Layer> {
    auto it = std::find_if(m_Layers.begin(), m_Layers.end(), [&](const auto& item) { return item.get() == overlay; });
    if (it != m_Layers.end()) {
       std::unique_ptr<Layer> tmp(std::move(*it));

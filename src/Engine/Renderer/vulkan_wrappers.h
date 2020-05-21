@@ -11,9 +11,9 @@
 typedef struct GLFWwindow GLFWwindow;
 
 template<class T>
-inline void hash_combine(std::size_t& s, const T& v) {
-   std::hash<T> h;
-   s ^= h(v) + 0x9e3779b9 + (s << 6u) + (s >> 2u);
+inline void hash_combine(std::size_t &s, const T &v) {
+    std::hash<T> h;
+    s ^= h(v) + 0x9e3779b9 + (s << 6u) + (s >> 2u);
 }
 
 
@@ -24,52 +24,269 @@ struct Vertex {
     math::vec3 color;
     math::vec2 texCoord;
 
-    static VkVertexInputBindingDescription getBindingDescription() {
-       VkVertexInputBindingDescription bindingDescription = {};
-       bindingDescription.binding = 0;
-       bindingDescription.stride = sizeof(Vertex);
-       bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    static auto getBindingDescription() -> VkVertexInputBindingDescription {
+        VkVertexInputBindingDescription bindingDescription = {};
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(Vertex);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-       return bindingDescription;
+        return bindingDescription;
     }
 
-    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
-       std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = {};
-       attributeDescriptions[0].binding = 0;
-       attributeDescriptions[0].location = 0;
-       attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-       attributeDescriptions[0].offset = 0;
+    static auto getAttributeDescriptions() -> std::array<VkVertexInputAttributeDescription, 3> {
+        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = {};
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[0].offset = 0;
 
-       attributeDescriptions[1].binding = 0;
-       attributeDescriptions[1].location = 1;
-       attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-       attributeDescriptions[1].offset = offsetof(Vertex, color);
+        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[1].offset = offsetof(Vertex, color);
 
-       attributeDescriptions[2].binding = 0;
-       attributeDescriptions[2].location = 2;
-       attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-       attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
+        attributeDescriptions[2].binding = 0;
+        attributeDescriptions[2].location = 2;
+        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
 
-       return attributeDescriptions;
+        return attributeDescriptions;
     }
 
-    bool operator==(const Vertex& other) const {
-       return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    auto operator==(const Vertex &other) const -> bool {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
     }
 };
 
 
+enum class QueueFamily {
+    GRAPHICS = 0,
+    PRESENT = 1,
+    TRANSFER = 2,
+    COUNT = 3
+};
+
+
 namespace vk {
+    class LogicalDevice {
+        VkPhysicalDevice m_Physical = nullptr;
+        VkDevice m_Device = nullptr;
+        VkSurfaceKHR m_Surface = nullptr;
+
+        std::vector<VkQueue> m_Queues;
+        std::vector<uint32_t> m_QueueIndices;
+
+        void Move(LogicalDevice &other) noexcept {
+            m_Physical = other.m_Physical;
+            m_Device = other.m_Device;
+            m_Surface = other.m_Surface;
+            m_Queues = std::move(other.m_Queues);
+            m_QueueIndices = std::move(other.m_QueueIndices);
+
+            other.m_Physical = nullptr;
+            other.m_Device = nullptr;
+            other.m_Surface = nullptr;
+        }
+
+        void Release() noexcept { if (m_Device) vkDestroyDevice(m_Device, nullptr); }
+
+        static const std::array<const char *, 1> s_RequiredExtensions;
+
+    public:
+        ~LogicalDevice() { Release(); }
+
+        LogicalDevice() = default;
+
+        LogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+
+        LogicalDevice(const LogicalDevice &other) = delete;
+
+        auto operator=(const LogicalDevice &other) -> LogicalDevice & = delete;
+
+        LogicalDevice(LogicalDevice &&other) noexcept { Move(other); }
+
+        auto operator=(LogicalDevice &&other) noexcept -> LogicalDevice & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
+        };
+
+        auto ptr() const noexcept -> const VkDevice* { return &m_Device; }
+
+        auto data() const noexcept -> const VkDevice & { return m_Device; }
+
+        auto GfxQueue() const -> VkQueue { return m_Queues[static_cast<size_t>(QueueFamily::GRAPHICS)]; }
+
+        auto GfxQueueIdx() const -> uint32_t { return m_QueueIndices[static_cast<size_t>(QueueFamily::GRAPHICS)]; }
+
+        auto PresentQueue() const -> VkQueue { return m_Queues[static_cast<size_t>(QueueFamily::PRESENT)]; }
+
+        auto PresentQueueIdx() const -> uint32_t { return m_QueueIndices[static_cast<size_t>(QueueFamily::PRESENT)]; }
+
+        auto TransferQueue() const -> VkQueue { return m_Queues[static_cast<size_t>(QueueFamily::TRANSFER)]; }
+
+        auto TransferQueueIdx() const -> uint32_t { return m_QueueIndices[static_cast<size_t>(QueueFamily::TRANSFER)]; }
+
+        auto queue(QueueFamily family) const -> VkQueue { return m_Queues[static_cast<size_t>(family)]; }
+
+        auto queueIndex(QueueFamily family) const -> uint32_t { return m_QueueIndices[static_cast<size_t>(family)]; }
+
+        auto getSurfaceFormats() const -> std::vector<VkSurfaceFormatKHR>;
+
+        auto getSurfacePresentModes() const -> std::vector<VkPresentModeKHR>;
+    };
+
+
+    class CommandBuffer {
+    private:
+        VkCommandBuffer m_Buffer = nullptr;
+
+    public:
+        explicit CommandBuffer(VkCommandBuffer buffer) : m_Buffer(buffer) {};
+
+        CommandBuffer(const CommandBuffer &other) = default;
+
+        auto operator=(const CommandBuffer &other) -> CommandBuffer & = default;
+
+        CommandBuffer(CommandBuffer &&other) = delete;
+
+        auto operator=(CommandBuffer &&other) = delete;
+
+        auto ptr() const noexcept -> const VkCommandBuffer* { return &m_Buffer; }
+
+        auto data() const noexcept -> const VkCommandBuffer& { return m_Buffer; }
+
+        void Begin(VkCommandBufferUsageFlags flags = 0) const {
+            VkCommandBufferBeginInfo beginInfo = {};
+            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.flags = flags;
+
+            if (vkBeginCommandBuffer(m_Buffer, &beginInfo) != VK_SUCCESS)
+                throw std::runtime_error("failed to begin command buffer recording!");
+        }
+
+        void End() const {
+            if (vkEndCommandBuffer(m_Buffer) != VK_SUCCESS)
+                throw std::runtime_error("failed to end command buffer recording!");
+        }
+
+        void Submit(VkQueue cmdQueue) const {
+            VkSubmitInfo submitInfo = {};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            Submit(submitInfo, cmdQueue);
+        }
+
+        void Submit(VkSubmitInfo &submitInfo, VkQueue cmdQueue, VkFence fence = nullptr) const {
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &m_Buffer;
+            vkQueueSubmit(cmdQueue, 1, &submitInfo, fence);
+        }
+    };
+
+
+    class CommandBuffers {
+    private:
+        VkDevice m_Device = nullptr;
+        VkCommandPool m_Pool = nullptr;
+        std::vector<VkCommandBuffer> m_Buffers;
+
+        void Move(CommandBuffers &other) noexcept {
+            m_Device = other.m_Device;
+            m_Pool = other.m_Pool;
+            m_Buffers = std::move(other.m_Buffers);
+            other.m_Device = nullptr;
+            other.m_Pool = nullptr;
+            other.m_Buffers.clear();
+        }
+
+        void Release() noexcept {
+            if (!m_Buffers.empty())
+                vkFreeCommandBuffers(m_Device, m_Pool, m_Buffers.size(), m_Buffers.data());
+        }
+
+    public:
+        ~CommandBuffers() { Release(); }
+
+        CommandBuffers() = default;
+
+        CommandBuffers(VkDevice device, VkCommandPool pool) : CommandBuffers(device, pool, 1) {}
+
+        CommandBuffers(VkDevice device, VkCommandPool pool, uint32_t count) : m_Device(device), m_Pool(pool) {
+            VkCommandBufferAllocateInfo allocInfo = {};
+            allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            allocInfo.commandPool = m_Pool;
+            allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocInfo.commandBufferCount = count;
+
+            m_Buffers.resize(count);
+            if (vkAllocateCommandBuffers(m_Device, &allocInfo, m_Buffers.data()) != VK_SUCCESS)
+                throw std::runtime_error("failed to allocate command buffers!");
+        }
+
+        CommandBuffers(const CommandBuffers &other) = delete;
+
+        auto operator=(const CommandBuffers &other) -> CommandBuffers & = delete;
+
+        CommandBuffers(CommandBuffers &&other) noexcept { Move(other); }
+
+        auto operator=(CommandBuffers &&other) noexcept -> CommandBuffers & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
+        }
+
+        auto operator[](size_t index) const -> CommandBuffer { return get(index); }
+
+        auto get(size_t index) const -> CommandBuffer {
+            if (index >= m_Buffers.size()) throw std::runtime_error("out of bounds command buffer indexing");
+            return CommandBuffer(m_Buffers[index]);
+        }
+
+        auto data() const -> const VkCommandBuffer * { return m_Buffers.data(); }
+
+        auto size() const -> uint32_t { return m_Buffers.size(); }
+
+//        void Begin(VkCommandBufferUsageFlags flags = 0) const { Begin(0, flags); }
+//
+//        void Begin(size_t index, VkCommandBufferUsageFlags flags = 0) const {
+//            operator[](index).Begin(flags);
+//        }
+//
+//        void End() const { End(0); }
+//
+//        void End(size_t index) const {
+//            operator[](index).End();
+//        }
+//
+//        void Submit(VkQueue cmdQueue) const { Submit(0, cmdQueue); }
+//
+//        void Submit(size_t index, VkQueue cmdQueue) const {
+//            operator[](index).Submit(cmdQueue);
+//        }
+//
+//        void Submit(VkSubmitInfo &submitInfo, VkQueue cmdQueue, VkFence fence = nullptr) const {
+//            Submit(0, submitInfo, cmdQueue, fence);
+//        }
+//
+//        void Submit(size_t index, VkSubmitInfo &submitInfo, VkQueue cmdQueue, VkFence fence = nullptr) const {
+//            operator[](index).Submit(submitInfo, cmdQueue, fence);
+//        }
+    };
+
+
+
     class Semaphore {
     private:
         VkSemaphore m_Semaphore = nullptr;
         VkDevice m_Device = nullptr;
 
-        void Move(Semaphore& other) noexcept {
-           m_Semaphore = other.m_Semaphore;
-           m_Device = other.m_Device;
-           other.m_Semaphore = nullptr;
-           other.m_Device = nullptr;
+        void Move(Semaphore &other) noexcept {
+            m_Semaphore = other.m_Semaphore;
+            m_Device = other.m_Device;
+            other.m_Semaphore = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Semaphore) vkDestroySemaphore(m_Device, m_Semaphore, nullptr); }
@@ -80,28 +297,28 @@ namespace vk {
         Semaphore() = default;
 
         explicit Semaphore(VkDevice device) : m_Device(device) {
-           VkSemaphoreCreateInfo semaphoreInfo = {};
-           semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-           if (vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &m_Semaphore) != VK_SUCCESS)
-              throw std::runtime_error("failed to create a semaphore!");
+            VkSemaphoreCreateInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            if (vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &m_Semaphore) != VK_SUCCESS)
+                throw std::runtime_error("failed to create a semaphore!");
         }
 
-        Semaphore(const Semaphore& other) = delete;
+        Semaphore(const Semaphore &other) = delete;
 
-        Semaphore& operator=(const Semaphore& other) = delete;
+        auto operator=(const Semaphore &other) -> Semaphore & = delete;
 
-        Semaphore(Semaphore&& other) noexcept { Move(other); }
+        Semaphore(Semaphore &&other) noexcept { Move(other); }
 
-        Semaphore& operator=(Semaphore&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Semaphore &&other) noexcept -> Semaphore & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkSemaphore* ptr() const noexcept { return &m_Semaphore; }
+        auto ptr() const noexcept -> const VkSemaphore * { return &m_Semaphore; }
 
-        const VkSemaphore& data() const noexcept { return m_Semaphore; }
+        auto data() const noexcept -> const VkSemaphore & { return m_Semaphore; }
     };
 
 
@@ -110,11 +327,11 @@ namespace vk {
         VkFence m_Fence = nullptr;
         VkDevice m_Device = nullptr;
 
-        void Move(Fence& other) noexcept {
-           m_Fence = other.m_Fence;
-           m_Device = other.m_Device;
-           other.m_Fence = nullptr;
-           other.m_Device = nullptr;
+        void Move(Fence &other) noexcept {
+            m_Fence = other.m_Fence;
+            m_Device = other.m_Device;
+            other.m_Fence = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Fence) vkDestroyFence(m_Device, m_Fence, nullptr); }
@@ -125,29 +342,29 @@ namespace vk {
         Fence() = default;
 
         Fence(VkDevice device, bool signaled) : m_Device(device) {
-           VkFenceCreateInfo fenceInfo = {};
-           fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-           if (signaled) fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-           if (vkCreateFence(m_Device, &fenceInfo, nullptr, &m_Fence) != VK_SUCCESS)
-              throw std::runtime_error("failed to create a fence!");
+            VkFenceCreateInfo fenceInfo = {};
+            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            if (signaled) fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+            if (vkCreateFence(m_Device, &fenceInfo, nullptr, &m_Fence) != VK_SUCCESS)
+                throw std::runtime_error("failed to create a fence!");
         }
 
-        Fence(const Fence& other) = delete;
+        Fence(const Fence &other) = delete;
 
-        Fence& operator=(const Fence& other) = delete;
+        auto operator=(const Fence &other) -> Fence & = delete;
 
-        Fence(Fence&& other) noexcept { Move(other); }
+        Fence(Fence &&other) noexcept { Move(other); }
 
-        Fence& operator=(Fence&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Fence &&other) noexcept -> Fence & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkFence* ptr() const noexcept { return &m_Fence; }
+        auto ptr() const noexcept -> const VkFence * { return &m_Fence; }
 
-        const VkFence& data() const noexcept { return m_Fence; }
+        auto data() const noexcept -> const VkFence & { return m_Fence; }
     };
 
 
@@ -156,11 +373,11 @@ namespace vk {
         VkCommandPool m_Pool = nullptr;
         VkDevice m_Device = nullptr;
 
-        void Move(CommandPool& other) noexcept {
-           m_Pool = other.m_Pool;
-           m_Device = other.m_Device;
-           other.m_Pool = nullptr;
-           other.m_Device = nullptr;
+        void Move(CommandPool &other) noexcept {
+            m_Pool = other.m_Pool;
+            m_Device = other.m_Device;
+            other.m_Pool = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Pool) vkDestroyCommandPool(m_Device, m_Pool, nullptr); }
@@ -171,112 +388,31 @@ namespace vk {
         CommandPool() = default;
 
         CommandPool(VkDevice device, uint32_t queueIndex, VkCommandPoolCreateFlags flags = 0) : m_Device(device) {
-           VkCommandPoolCreateInfo poolInfo = {};
-           poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-           poolInfo.queueFamilyIndex = queueIndex;
-           poolInfo.flags = flags;
+            VkCommandPoolCreateInfo poolInfo = {};
+            poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            poolInfo.queueFamilyIndex = queueIndex;
+            poolInfo.flags = flags;
 
-           if (vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_Pool) != VK_SUCCESS)
-              throw std::runtime_error("failed to create command pool!");
+            if (vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_Pool) != VK_SUCCESS)
+                throw std::runtime_error("failed to create command pool!");
         }
 
-        CommandPool(const CommandPool& other) = delete;
+        CommandPool(const CommandPool &other) = delete;
 
-        CommandPool& operator=(const CommandPool& other) = delete;
+        auto operator=(const CommandPool &other) -> CommandPool & = delete;
 
-        CommandPool(CommandPool&& other) noexcept { Move(other); }
+        CommandPool(CommandPool &&other) noexcept { Move(other); }
 
-        CommandPool& operator=(CommandPool&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(CommandPool &&other) noexcept -> CommandPool & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkCommandPool* ptr() const noexcept { return &m_Pool; }
+        auto ptr() const noexcept -> const VkCommandPool * { return &m_Pool; }
 
-        const VkCommandPool& data() const noexcept { return m_Pool; }
-    };
-
-
-    class CommandBuffer {
-    private:
-        VkCommandPool m_Pool = nullptr;
-        VkCommandBuffer m_Buffer = nullptr;
-        VkDevice m_Device = nullptr;
-
-        void Move(CommandBuffer& other) noexcept {
-           m_Pool = other.m_Pool;
-           m_Buffer = other.m_Buffer;
-           m_Device = other.m_Device;
-           other.m_Pool = nullptr;
-           other.m_Buffer = nullptr;
-           other.m_Device = nullptr;
-        }
-
-        void Release() noexcept { if (m_Buffer) vkFreeCommandBuffers(m_Device, m_Pool, 1, &m_Buffer); }
-
-    public:
-        ~CommandBuffer() { Release(); }
-
-        CommandBuffer() = default;
-
-        CommandBuffer(VkDevice device, VkCommandPool pool, VkCommandBuffer buffer) : m_Pool(pool), m_Buffer(buffer),
-                                                                                     m_Device(device) {};
-
-        CommandBuffer(VkDevice device, VkCommandPool pool) : m_Pool(pool), m_Device(device) {
-           VkCommandBufferAllocateInfo allocInfo = {};
-           allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-           allocInfo.commandPool = m_Pool;
-           allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-           allocInfo.commandBufferCount = 1;
-
-           if (vkAllocateCommandBuffers(m_Device, &allocInfo, &m_Buffer) != VK_SUCCESS)
-              throw std::runtime_error("failed to allocate command buffers!");
-        }
-
-        CommandBuffer(const CommandBuffer& other) = delete;
-
-        CommandBuffer& operator=(const CommandBuffer& other) = delete;
-
-        CommandBuffer(CommandBuffer&& other) noexcept { Move(other); }
-
-        CommandBuffer& operator=(CommandBuffer&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
-        };
-
-        const VkCommandBuffer* ptr() const noexcept { return &m_Buffer; }
-
-        const VkCommandBuffer& data() const noexcept { return m_Buffer; }
-
-        void Begin(VkCommandBufferUsageFlags flags = 0) {
-           VkCommandBufferBeginInfo beginInfo = {};
-           beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-           beginInfo.flags = flags;
-
-           if (vkBeginCommandBuffer(m_Buffer, &beginInfo) != VK_SUCCESS)
-              throw std::runtime_error("failed to begin command buffer recording!");
-        }
-
-        void End() {
-           if (vkEndCommandBuffer(m_Buffer) != VK_SUCCESS)
-              throw std::runtime_error("failed to end command buffer recording!");
-        }
-
-        void Submit(VkQueue cmdQueue) {
-           VkSubmitInfo submitInfo = {};
-           submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-           Submit(submitInfo, cmdQueue);
-        }
-
-        void Submit(VkSubmitInfo& submitInfo, VkQueue cmdQueue, VkFence fence = nullptr) {
-           submitInfo.commandBufferCount = 1;
-           submitInfo.pCommandBuffers = &m_Buffer;
-           vkQueueSubmit(cmdQueue, 1, &submitInfo, fence);
-        }
+        auto data() const noexcept -> const VkCommandPool & { return m_Pool; }
     };
 
 
@@ -285,11 +421,11 @@ namespace vk {
         VkFramebuffer m_Framebuffer = nullptr;
         VkDevice m_Device = nullptr;
 
-        void Move(Framebuffer& other) noexcept {
-           m_Framebuffer = other.m_Framebuffer;
-           m_Device = other.m_Device;
-           other.m_Framebuffer = nullptr;
-           other.m_Device = nullptr;
+        void Move(Framebuffer &other) noexcept {
+            m_Framebuffer = other.m_Framebuffer;
+            m_Device = other.m_Device;
+            other.m_Framebuffer = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Framebuffer) vkDestroyFramebuffer(m_Device, m_Framebuffer, nullptr); }
@@ -299,37 +435,37 @@ namespace vk {
 
         Framebuffer() = default;
 
-        Framebuffer(VkDevice device, VkRenderPass renderPass, const VkExtent2D& extent,
-                    const std::vector<VkImageView>& attachments) : m_Device(device) {
-           VkFramebufferCreateInfo framebufferInfo = {};
-           framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-           framebufferInfo.renderPass = renderPass;
-           framebufferInfo.width = extent.width;
-           framebufferInfo.height = extent.height;
-           framebufferInfo.layers = 1;
-           framebufferInfo.attachmentCount = attachments.size();
-           framebufferInfo.pAttachments = attachments.data();
+        Framebuffer(VkDevice device, VkRenderPass renderPass, const VkExtent2D &extent,
+                    const std::vector<VkImageView> &attachments) : m_Device(device) {
+            VkFramebufferCreateInfo framebufferInfo = {};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = renderPass;
+            framebufferInfo.width = extent.width;
+            framebufferInfo.height = extent.height;
+            framebufferInfo.layers = 1;
+            framebufferInfo.attachmentCount = attachments.size();
+            framebufferInfo.pAttachments = attachments.data();
 
-           if (vkCreateFramebuffer(m_Device, &framebufferInfo, nullptr, &m_Framebuffer) != VK_SUCCESS)
-              throw std::runtime_error("failed to create framebuffer!");
+            if (vkCreateFramebuffer(m_Device, &framebufferInfo, nullptr, &m_Framebuffer) != VK_SUCCESS)
+                throw std::runtime_error("failed to create framebuffer!");
         }
 
-        Framebuffer(const Framebuffer& other) = delete;
+        Framebuffer(const Framebuffer &other) = delete;
 
-        Framebuffer& operator=(const Framebuffer& other) = delete;
+        auto operator=(const Framebuffer &other) -> Framebuffer & = delete;
 
-        Framebuffer(Framebuffer&& other) noexcept { Move(other); }
+        Framebuffer(Framebuffer &&other) noexcept { Move(other); }
 
-        Framebuffer& operator=(Framebuffer&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Framebuffer &&other) noexcept -> Framebuffer & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkFramebuffer* ptr() const noexcept { return &m_Framebuffer; }
+        auto ptr() const noexcept -> const VkFramebuffer * { return &m_Framebuffer; }
 
-        const VkFramebuffer& data() const noexcept { return m_Framebuffer; }
+        auto data() const noexcept -> const VkFramebuffer & { return m_Framebuffer; }
     };
 
     class Image;
@@ -339,11 +475,11 @@ namespace vk {
         VkImageView m_ImageView = nullptr;
         VkDevice m_Device = nullptr;
 
-        void Move(ImageView& other) noexcept {
-           m_ImageView = other.m_ImageView;
-           m_Device = other.m_Device;
-           other.m_ImageView = nullptr;
-           other.m_Device = nullptr;
+        void Move(ImageView &other) noexcept {
+            m_ImageView = other.m_ImageView;
+            m_Device = other.m_Device;
+            other.m_ImageView = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_ImageView) vkDestroyImageView(m_Device, m_ImageView, nullptr); }
@@ -355,43 +491,43 @@ namespace vk {
 
         ImageView(VkDevice device, VkImage image, VkFormat format, uint32_t mipLevels, VkImageAspectFlags aspectFlags)
                 : m_Device(device) {
-           VkImageViewCreateInfo createInfo = {};
-           createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-           createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-           createInfo.format = format;
-           createInfo.image = image;
-           createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-           createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-           createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-           createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-           createInfo.subresourceRange.aspectMask = aspectFlags;
-           createInfo.subresourceRange.baseMipLevel = 0;
-           createInfo.subresourceRange.levelCount = mipLevels;
-           createInfo.subresourceRange.baseArrayLayer = 0;
-           createInfo.subresourceRange.layerCount = 1;
+            VkImageViewCreateInfo createInfo = {};
+            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            createInfo.format = format;
+            createInfo.image = image;
+            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.subresourceRange.aspectMask = aspectFlags;
+            createInfo.subresourceRange.baseMipLevel = 0;
+            createInfo.subresourceRange.levelCount = mipLevels;
+            createInfo.subresourceRange.baseArrayLayer = 0;
+            createInfo.subresourceRange.layerCount = 1;
 
-           if (vkCreateImageView(m_Device, &createInfo, nullptr, &m_ImageView) != VK_SUCCESS)
-              throw std::runtime_error("failed to create image views!");
+            if (vkCreateImageView(m_Device, &createInfo, nullptr, &m_ImageView) != VK_SUCCESS)
+                throw std::runtime_error("failed to create image views!");
         }
 
-        ImageView(VkDevice, const Image& image, VkImageAspectFlags aspectFlags);
+        ImageView(VkDevice, const Image &image, VkImageAspectFlags aspectFlags);
 
-        ImageView(const ImageView& other) = delete;
+        ImageView(const ImageView &other) = delete;
 
-        ImageView& operator=(const ImageView& other) = delete;
+        auto operator=(const ImageView &other) -> ImageView & = delete;
 
-        ImageView(ImageView&& other) noexcept { Move(other); }
+        ImageView(ImageView &&other) noexcept { Move(other); }
 
-        ImageView& operator=(ImageView&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(ImageView &&other) noexcept -> ImageView & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkImageView* ptr() const noexcept { return &m_ImageView; }
+        auto ptr() const noexcept -> const VkImageView * { return &m_ImageView; }
 
-        const VkImageView& data() const noexcept { return m_ImageView; }
+        auto data() const noexcept -> const VkImageView & { return m_ImageView; }
     };
 
 
@@ -425,16 +561,16 @@ namespace vk {
                 }
         };
 
-        void Move(Image& other) noexcept {
-           m_Image = other.m_Image;
-           m_Device = other.m_Device;
-           m_Format = other.m_Format;
-           m_CurrentLayout = other.m_CurrentLayout;
-           m_CurrentStage = other.m_CurrentStage;
-           m_MipLevels = other.m_MipLevels;
-           Extent = other.Extent;
-           other.m_Image = nullptr;
-           other.m_Device = nullptr;
+        void Move(Image &other) noexcept {
+            m_Image = other.m_Image;
+            m_Device = other.m_Device;
+            m_Format = other.m_Format;
+            m_CurrentLayout = other.m_CurrentLayout;
+            m_CurrentStage = other.m_CurrentStage;
+            m_MipLevels = other.m_MipLevels;
+            Extent = other.Extent;
+            other.m_Image = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Image) vkDestroyImage(m_Device, m_Image, nullptr); }
@@ -446,104 +582,105 @@ namespace vk {
 
         Image() = default;
 
-        Image(VkDevice device, const std::set<uint32_t>& queueIndices, const VkExtent2D& extent, uint32_t mipLevels,
+        Image(VkDevice device, const std::set<uint32_t> &queueIndices, const VkExtent2D &extent, uint32_t mipLevels,
               VkSampleCountFlagBits samples,
               VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage) : m_Device(device), m_Format(format),
                                                                                 m_MipLevels(mipLevels),
                                                                                 Extent(extent) {
 
-           VkImageCreateInfo imageInfo = {};
-           imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-           imageInfo.imageType = VK_IMAGE_TYPE_2D;
-           imageInfo.extent.width = extent.width;
-           imageInfo.extent.height = extent.height;
-           imageInfo.extent.depth = 1;
-           imageInfo.mipLevels = m_MipLevels;
-           imageInfo.arrayLayers = 1;
-           imageInfo.format = m_Format;
-           imageInfo.tiling = tiling;
-           imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-           imageInfo.usage = usage;
-           imageInfo.samples = samples;
-           imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            VkImageCreateInfo imageInfo = {};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageInfo.extent.width = extent.width;
+            imageInfo.extent.height = extent.height;
+            imageInfo.extent.depth = 1;
+            imageInfo.mipLevels = m_MipLevels;
+            imageInfo.arrayLayers = 1;
+            imageInfo.format = m_Format;
+            imageInfo.tiling = tiling;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            imageInfo.usage = usage;
+            imageInfo.samples = samples;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-           std::vector<uint32_t> uniqueIndices(queueIndices.begin(), queueIndices.end());
-           if (queueIndices.size() < 2) {
-              imageInfo.queueFamilyIndexCount = 0;
-              imageInfo.pQueueFamilyIndices = nullptr;
-           } else {
-              imageInfo.queueFamilyIndexCount = uniqueIndices.size();
-              imageInfo.pQueueFamilyIndices = uniqueIndices.data();
-           }
+            std::vector<uint32_t> uniqueIndices(queueIndices.begin(), queueIndices.end());
+            if (queueIndices.size() < 2) {
+                imageInfo.queueFamilyIndexCount = 0;
+                imageInfo.pQueueFamilyIndices = nullptr;
+            } else {
+                imageInfo.queueFamilyIndexCount = uniqueIndices.size();
+                imageInfo.pQueueFamilyIndices = uniqueIndices.data();
+            }
 
-           if (vkCreateImage(m_Device, &imageInfo, nullptr, &m_Image) != VK_SUCCESS)
-              throw std::runtime_error("failed to create image!");
+            if (vkCreateImage(m_Device, &imageInfo, nullptr, &m_Image) != VK_SUCCESS)
+                throw std::runtime_error("failed to create image!");
         }
 
-        Image(VkDevice device, const VkImageCreateInfo& createInfo) : m_Device(device) {
-           m_Format = createInfo.format;
-           m_MipLevels = createInfo.mipLevels;
-           Extent.width = createInfo.extent.width;
-           Extent.height = createInfo.extent.height;
-           if (vkCreateImage(m_Device, &createInfo, nullptr, &m_Image) != VK_SUCCESS)
-              throw std::runtime_error("failed to create image!");
+        Image(VkDevice device, const VkImageCreateInfo &createInfo) : m_Device(device) {
+            m_Format = createInfo.format;
+            m_MipLevels = createInfo.mipLevels;
+            Extent.width = createInfo.extent.width;
+            Extent.height = createInfo.extent.height;
+            if (vkCreateImage(m_Device, &createInfo, nullptr, &m_Image) != VK_SUCCESS)
+                throw std::runtime_error("failed to create image!");
         }
 
-        Image(const Image& other) = delete;
+        Image(const Image &other) = delete;
 
-        Image& operator=(const Image& other) = delete;
+        auto operator=(const Image &other) -> Image & = delete;
 
-        Image(Image&& other) noexcept { Move(other); }
+        Image(Image &&other) noexcept { Move(other); }
 
-        Image& operator=(Image&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Image &&other) noexcept -> Image & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkImage* ptr() const noexcept { return &m_Image; }
+        auto ptr() const noexcept -> const VkImage * { return &m_Image; }
 
-        const VkImage& data() const noexcept { return m_Image; }
+        auto data() const noexcept -> const VkImage & { return m_Image; }
 
-        ImageView createView(VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT) {
-           return ImageView(m_Device, m_Image, format, m_MipLevels, aspectFlags);
-        }
+//        auto createView(VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT) -> ImageView* {
+//            return ImageView(m_Device, m_Image, format, m_MipLevels, aspectFlags);
+//        }
 
-        uint32_t MipLevels() { return m_MipLevels; }
+        auto MipLevels() const -> uint32_t { return m_MipLevels; }
 
-        void ChangeLayout(const CommandBuffer& cmdBuffer, VkImageLayout newLayout);
+        void ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout);
 
-        void ChangeLayout(const CommandBuffer& cmdBuffer, VkImageLayout newLayout, VkPipelineStageFlags dstStage,
+        void ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout, VkPipelineStageFlags dstStage,
                           VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
 
-        void GenerateMipmaps(VkPhysicalDevice physicalDevice, const CommandBuffer& cmdBuffer);
+        void GenerateMipmaps(VkPhysicalDevice physicalDevice, const CommandBuffer &cmdBuffer);
 
         void BindMemory(VkDeviceMemory memory, VkDeviceSize offset) {
-           if (vkBindImageMemory(m_Device, m_Image, memory, offset) != VK_SUCCESS)
-              throw std::runtime_error("failed to bind memory to image!");
+            if (vkBindImageMemory(m_Device, m_Image, memory, offset) != VK_SUCCESS)
+                throw std::runtime_error("failed to bind memory to image!");
         }
     };
 
 
-    inline ImageView::ImageView(VkDevice device, const Image& image, VkImageAspectFlags aspectFlags) : m_Device(device) {
-       VkImageViewCreateInfo createInfo = {};
-       createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-       createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-       createInfo.format = image.m_Format;
-       createInfo.image = image.data();
-       createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-       createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-       createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-       createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-       createInfo.subresourceRange.aspectMask = aspectFlags;
-       createInfo.subresourceRange.baseMipLevel = 0;
-       createInfo.subresourceRange.levelCount = image.m_MipLevels;
-       createInfo.subresourceRange.baseArrayLayer = 0;
-       createInfo.subresourceRange.layerCount = 1;
+    inline ImageView::ImageView(VkDevice device, const Image &image, VkImageAspectFlags aspectFlags) : m_Device(
+            device) {
+        VkImageViewCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        createInfo.format = image.m_Format;
+        createInfo.image = image.data();
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.subresourceRange.aspectMask = aspectFlags;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = image.m_MipLevels;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
 
-       if (vkCreateImageView(m_Device, &createInfo, nullptr, &m_ImageView) != VK_SUCCESS)
-          throw std::runtime_error("failed to create image views!");
+        if (vkCreateImageView(m_Device, &createInfo, nullptr, &m_ImageView) != VK_SUCCESS)
+            throw std::runtime_error("failed to create image views!");
     }
 
 
@@ -553,12 +690,12 @@ namespace vk {
         VkDevice m_Device = nullptr;
         VkDeviceSize m_Size = 0;
 
-        void Move(Buffer& other) noexcept {
-           m_Buffer = other.m_Buffer;
-           m_Device = other.m_Device;
-           m_Size = other.m_Size;
-           other.m_Buffer = nullptr;
-           other.m_Device = nullptr;
+        void Move(Buffer &other) noexcept {
+            m_Buffer = other.m_Buffer;
+            m_Device = other.m_Device;
+            m_Size = other.m_Size;
+            other.m_Buffer = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Buffer) vkDestroyBuffer(m_Device, m_Buffer, nullptr); }
@@ -568,50 +705,50 @@ namespace vk {
 
         Buffer() = default;
 
-        Buffer(VkDevice device, const std::set<uint32_t>& queueIndices, VkDeviceSize size, VkBufferUsageFlags usage,
+        Buffer(VkDevice device, const std::set<uint32_t> &queueIndices, VkDeviceSize size, VkBufferUsageFlags usage,
                VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE) : m_Device(device), m_Size(size) {
 
-           VkBufferCreateInfo bufferInfo = {};
-           bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-           bufferInfo.size = m_Size;
-           bufferInfo.usage = usage;
-           bufferInfo.sharingMode = sharingMode;
+            VkBufferCreateInfo bufferInfo = {};
+            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bufferInfo.size = m_Size;
+            bufferInfo.usage = usage;
+            bufferInfo.sharingMode = sharingMode;
 
-           if (queueIndices.size() < 2) {
-              bufferInfo.queueFamilyIndexCount = 0;
-              bufferInfo.pQueueFamilyIndices = nullptr;
-           } else {
-              std::vector<uint32_t> uniqueIndices(queueIndices.begin(), queueIndices.end());
-              bufferInfo.queueFamilyIndexCount = uniqueIndices.size();
-              bufferInfo.pQueueFamilyIndices = uniqueIndices.data();
-           }
+            if (queueIndices.size() < 2) {
+                bufferInfo.queueFamilyIndexCount = 0;
+                bufferInfo.pQueueFamilyIndices = nullptr;
+            } else {
+                std::vector<uint32_t> uniqueIndices(queueIndices.begin(), queueIndices.end());
+                bufferInfo.queueFamilyIndexCount = uniqueIndices.size();
+                bufferInfo.pQueueFamilyIndices = uniqueIndices.data();
+            }
 
-           if (vkCreateBuffer(m_Device, &bufferInfo, nullptr, &m_Buffer) != VK_SUCCESS)
-              throw std::runtime_error("failed to create buffer!");
+            if (vkCreateBuffer(m_Device, &bufferInfo, nullptr, &m_Buffer) != VK_SUCCESS)
+                throw std::runtime_error("failed to create buffer!");
         }
 
-        Buffer(const Buffer& other) = delete;
+        Buffer(const Buffer &other) = delete;
 
-        Buffer& operator=(const Buffer& other) = delete;
+        auto operator=(const Buffer &other) -> Buffer & = delete;
 
-        Buffer(Buffer&& other) noexcept { Move(other); }
+        Buffer(Buffer &&other) noexcept { Move(other); }
 
-        Buffer& operator=(Buffer&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Buffer &&other) noexcept -> Buffer & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        VkDeviceSize Size() const { return m_Size; }
+        auto Size() const -> VkDeviceSize { return m_Size; }
 
-        const VkBuffer* ptr() const noexcept { return &m_Buffer; }
+        auto ptr() const noexcept -> const VkBuffer * { return &m_Buffer; }
 
-        const VkBuffer& data() const noexcept { return m_Buffer; }
+        auto data() const noexcept -> const VkBuffer & { return m_Buffer; }
 
         void BindMemory(VkDeviceMemory memory, VkDeviceSize offset) {
-           if (vkBindBufferMemory(m_Device, m_Buffer, memory, offset) != VK_SUCCESS)
-              throw std::runtime_error("failed to bind memory to buffer!");
+            if (vkBindBufferMemory(m_Device, m_Buffer, memory, offset) != VK_SUCCESS)
+                throw std::runtime_error("failed to bind memory to buffer!");
         }
     };
 
@@ -621,76 +758,76 @@ namespace vk {
         VkDevice m_Device = nullptr;
         VkDeviceMemory m_Memory = nullptr;
 
-        void Move(DeviceMemory& other) noexcept {
-           m_Memory = other.m_Memory;
-           m_Device = other.m_Device;
-           other.m_Memory = nullptr;
-           other.m_Device = nullptr;
+        void Move(DeviceMemory &other) noexcept {
+            m_Memory = other.m_Memory;
+            m_Device = other.m_Device;
+            other.m_Memory = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept {
-           if (m_Memory) {
-              vkFreeMemory(m_Device, m_Memory, nullptr);
-           }
+            if (m_Memory) {
+                vkFreeMemory(m_Device, m_Memory, nullptr);
+            }
         }
 
     public:
-        void* m_Mapping = nullptr;
+        void *m_Mapping = nullptr;
 
         ~DeviceMemory() { Release(); }
 
         DeviceMemory() = default;
 
         DeviceMemory(VkDevice device, uint32_t memoryTypeIdx, VkDeviceSize size) : m_Device(device) {
-           VkMemoryAllocateInfo allocInfo = {};
-           allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-           allocInfo.allocationSize = size;
-           allocInfo.memoryTypeIndex = memoryTypeIdx;
+            VkMemoryAllocateInfo allocInfo = {};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = size;
+            allocInfo.memoryTypeIndex = memoryTypeIdx;
 
-           if (vkAllocateMemory(m_Device, &allocInfo, nullptr, &m_Memory) != VK_SUCCESS)
-              throw std::runtime_error("failed to allocate buffer memory!");
+            if (vkAllocateMemory(m_Device, &allocInfo, nullptr, &m_Memory) != VK_SUCCESS)
+                throw std::runtime_error("failed to allocate buffer memory!");
         }
 
-        DeviceMemory(const DeviceMemory& other) = delete;
+        DeviceMemory(const DeviceMemory &other) = delete;
 
-        DeviceMemory& operator=(const DeviceMemory& other) = delete;
+        auto operator=(const DeviceMemory &other) -> DeviceMemory & = delete;
 
-        DeviceMemory(DeviceMemory&& other) noexcept { Move(other); }
+        DeviceMemory(DeviceMemory &&other) noexcept { Move(other); }
 
-        DeviceMemory& operator=(DeviceMemory&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(DeviceMemory &&other) noexcept -> DeviceMemory & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkDeviceMemory* ptr() const noexcept { return &m_Memory; }
+        auto ptr() const noexcept -> const VkDeviceMemory * { return &m_Memory; }
 
-        const VkDeviceMemory& data() const noexcept { return m_Memory; }
+        auto data() const noexcept -> const VkDeviceMemory & { return m_Memory; }
 
         void MapMemory(VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags = 0) {
-           m_Mapping = nullptr;
-           if (vkMapMemory(m_Device, m_Memory, offset, size, flags, &m_Mapping) != VK_SUCCESS) {
-              throw std::runtime_error("failed to map device memory!");
-           }
+            m_Mapping = nullptr;
+            if (vkMapMemory(m_Device, m_Memory, offset, size, flags, &m_Mapping) != VK_SUCCESS) {
+                throw std::runtime_error("failed to map device memory!");
+            }
         }
 
         void UnmapMemory() {
-           if (m_Mapping) {
-              vkUnmapMemory(m_Device, m_Memory);
-              m_Mapping = nullptr;
-           }
+            if (m_Mapping) {
+                vkUnmapMemory(m_Device, m_Memory);
+                m_Mapping = nullptr;
+            }
         }
 
         void Flush(VkDeviceSize offset, VkDeviceSize size) {
-           VkMappedMemoryRange mappedRange = {};
-           mappedRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-           mappedRange.memory = m_Memory;
-           mappedRange.offset = offset;
-           mappedRange.size = size;
-           if (vkFlushMappedMemoryRanges(m_Device, 1, &mappedRange) != VK_SUCCESS) {
-              throw std::runtime_error("failed to flush memory!");
-           }
+            VkMappedMemoryRange mappedRange = {};
+            mappedRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+            mappedRange.memory = m_Memory;
+            mappedRange.offset = offset;
+            mappedRange.size = size;
+            if (vkFlushMappedMemoryRanges(m_Device, 1, &mappedRange) != VK_SUCCESS) {
+                throw std::runtime_error("failed to flush memory!");
+            }
         }
     };
 
@@ -700,11 +837,11 @@ namespace vk {
         VkDevice m_Device = nullptr;
         VkDescriptorPool m_Pool = nullptr;
 
-        void Move(DescriptorPool& other) noexcept {
-           m_Device = other.m_Device;
-           m_Pool = other.m_Pool;
-           other.m_Device = nullptr;
-           other.m_Pool = nullptr;
+        void Move(DescriptorPool &other) noexcept {
+            m_Device = other.m_Device;
+            m_Pool = other.m_Pool;
+            other.m_Device = nullptr;
+            other.m_Pool = nullptr;
         }
 
         void Release() noexcept { if (m_Pool) vkDestroyDescriptorPool(m_Device, m_Pool, nullptr); }
@@ -714,96 +851,38 @@ namespace vk {
 
         DescriptorPool() = default;
 
-        DescriptorPool(VkDevice device, const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets) : m_Device(
+        DescriptorPool(VkDevice device, const std::vector<VkDescriptorPoolSize> &poolSizes, uint32_t maxSets,
+                       VkDescriptorPoolCreateFlags flags = 0)
+                : m_Device(
                 device) {
-           VkDescriptorPoolCreateInfo poolInfo = {};
-           poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-           poolInfo.poolSizeCount = poolSizes.size();
-           poolInfo.pPoolSizes = poolSizes.data();
-           poolInfo.maxSets = maxSets;
+            VkDescriptorPoolCreateInfo poolInfo = {};
+            poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            poolInfo.flags = flags;
+            poolInfo.poolSizeCount = poolSizes.size();
+            poolInfo.pPoolSizes = poolSizes.data();
+            poolInfo.maxSets = maxSets;
 
-           if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_Pool) != VK_SUCCESS) {
-              throw std::runtime_error("failed to create descriptor pool!");
-           }
+            if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_Pool) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create descriptor pool!");
+            }
         }
 
-        DescriptorPool(const DescriptorPool& other) = delete;
+        DescriptorPool(const DescriptorPool &other) = delete;
 
-        DescriptorPool& operator=(const DescriptorPool& other) = delete;
+        auto operator=(const DescriptorPool &other) -> DescriptorPool & = delete;
 
-        DescriptorPool(DescriptorPool&& other) noexcept { Move(other); }
+        DescriptorPool(DescriptorPool &&other) noexcept { Move(other); }
 
-        DescriptorPool& operator=(DescriptorPool&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(DescriptorPool &&other) noexcept -> DescriptorPool & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkDescriptorPool* ptr() const noexcept { return &m_Pool; }
+        auto ptr() const noexcept -> const VkDescriptorPool * { return &m_Pool; }
 
-        const VkDescriptorPool& data() const noexcept { return m_Pool; }
-    };
-
-
-    class CommandBuffers {
-    private:
-        VkDevice m_Device = nullptr;
-        VkCommandPool m_Pool = nullptr;
-        std::vector<VkCommandBuffer> m_Buffers;
-
-        void Move(CommandBuffers& other) noexcept {
-           m_Device = other.m_Device;
-           m_Pool = other.m_Pool;
-           m_Buffers = std::move(other.m_Buffers);
-           other.m_Device = nullptr;
-           other.m_Pool = nullptr;
-           other.m_Buffers.clear();
-        }
-
-        void Release() noexcept {
-           if (!m_Buffers.empty())
-              vkFreeCommandBuffers(m_Device, m_Pool, m_Buffers.size(), m_Buffers.data());
-        }
-
-    public:
-        ~CommandBuffers() { Release(); }
-
-        CommandBuffers() = default;
-
-        CommandBuffers(VkDevice device, VkCommandPool pool, uint32_t count) : m_Device(device), m_Pool(pool) {
-           VkCommandBufferAllocateInfo allocInfo = {};
-           allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-           allocInfo.commandPool = m_Pool;
-           allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-           allocInfo.commandBufferCount = count;
-
-           m_Buffers.resize(count);
-           if (vkAllocateCommandBuffers(m_Device, &allocInfo, m_Buffers.data()) != VK_SUCCESS)
-              throw std::runtime_error("failed to allocate command buffers!");
-        }
-
-        CommandBuffers(const CommandBuffers& other) = delete;
-
-        CommandBuffers& operator=(const CommandBuffers& other) = delete;
-
-        CommandBuffers(CommandBuffers&& other) noexcept { Move(other); }
-
-        CommandBuffers& operator=(CommandBuffers&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
-        };
-
-        const VkCommandBuffer& operator[](size_t index) const {
-           if (index >= m_Buffers.size()) throw std::runtime_error("out of bounds command buffer indexing");
-           return m_Buffers[index];
-        };
-
-        const VkCommandBuffer* data() const { return m_Buffers.data(); }
-
-        uint32_t size() const { return m_Buffers.size(); }
+        auto data() const noexcept -> const VkDescriptorPool & { return m_Pool; }
     };
 
 
@@ -813,59 +892,63 @@ namespace vk {
         VkDescriptorPool m_Pool = nullptr;
         std::vector<VkDescriptorSet> m_Sets;
 
-        void Move(DescriptorSets& other) noexcept {
-           m_Device = other.m_Device;
-           m_Pool = other.m_Pool;
-           m_Sets = std::move(other.m_Sets);
-           other.m_Device = nullptr;
-           other.m_Pool = nullptr;
-           other.m_Sets.clear();
+        void Move(DescriptorSets &other) noexcept {
+            m_Device = other.m_Device;
+            m_Pool = other.m_Pool;
+            m_Sets = std::move(other.m_Sets);
+            other.m_Device = nullptr;
+            other.m_Pool = nullptr;
+            other.m_Sets.clear();
         }
 
     public:
         void Release() noexcept {
-           m_Sets.clear();
+            m_Sets.clear();
         }
 
         ~DescriptorSets() { Release(); }
 
         DescriptorSets() = default;
 
-        DescriptorSets(VkDevice device, VkDescriptorPool pool, const std::vector<VkDescriptorSetLayout>& layouts)
+        DescriptorSets(VkDevice device, VkDescriptorPool pool, const std::vector<VkDescriptorSetLayout> &layouts)
                 : m_Device(device), m_Pool(pool) {
-           VkDescriptorSetAllocateInfo allocInfo = {};
-           allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-           allocInfo.descriptorPool = pool;
-           allocInfo.descriptorSetCount = layouts.size();
-           allocInfo.pSetLayouts = layouts.data();
+            VkDescriptorSetAllocateInfo allocInfo = {};
+            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool = pool;
+            allocInfo.descriptorSetCount = layouts.size();
+            allocInfo.pSetLayouts = layouts.data();
 
-           m_Sets.resize(layouts.size());
-           if (vkAllocateDescriptorSets(device, &allocInfo, m_Sets.data()) != VK_SUCCESS) {
-              throw std::runtime_error("failed to allocate descriptor sets!");
-           }
+            m_Sets.resize(layouts.size());
+            if (vkAllocateDescriptorSets(device, &allocInfo, m_Sets.data()) != VK_SUCCESS) {
+                throw std::runtime_error("failed to allocate descriptor sets!");
+            }
         }
 
-        DescriptorSets(const DescriptorSets& other) = delete;
+        DescriptorSets(const DescriptorSets &other) = delete;
 
-        DescriptorSets& operator=(const DescriptorSets& other) = delete;
+        auto operator=(const DescriptorSets &other) -> DescriptorSets & = delete;
 
-        DescriptorSets(DescriptorSets&& other) noexcept { Move(other); }
+        DescriptorSets(DescriptorSets &&other) noexcept { Move(other); }
 
-        DescriptorSets& operator=(DescriptorSets&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(DescriptorSets &&other) noexcept -> DescriptorSets & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkDescriptorSet& operator[](size_t index) const {
-           if (index >= m_Sets.size()) throw std::runtime_error("out of bounds descriptor set indexing");
-           return m_Sets[index];
+        auto get(size_t index) const -> const VkDescriptorSet & {
+            if (index >= m_Sets.size()) throw std::runtime_error("out of bounds descriptor set indexing");
+            return m_Sets[index];
         };
 
-        const VkDescriptorSet* data() const { return m_Sets.data(); }
+        auto operator[](size_t index) const -> const VkDescriptorSet & {
+            return get(index);
+        };
 
-        uint32_t size() const { return m_Sets.size(); }
+        auto data() const -> const VkDescriptorSet * { return m_Sets.data(); }
+
+        auto size() const -> uint32_t { return m_Sets.size(); }
     };
 
 
@@ -874,11 +957,11 @@ namespace vk {
         VkDevice m_Device = nullptr;
         VkDescriptorSetLayout m_Layout = nullptr;
 
-        void Move(DescriptorSetLayout& other) noexcept {
-           m_Device = other.m_Device;
-           m_Layout = other.m_Layout;
-           other.m_Device = nullptr;
-           other.m_Layout = nullptr;
+        void Move(DescriptorSetLayout &other) noexcept {
+            m_Device = other.m_Device;
+            m_Layout = other.m_Layout;
+            other.m_Device = nullptr;
+            other.m_Layout = nullptr;
         }
 
         void Release() noexcept { if (m_Layout) vkDestroyDescriptorSetLayout(m_Device, m_Layout, nullptr); }
@@ -888,33 +971,33 @@ namespace vk {
 
         DescriptorSetLayout() = default;
 
-        DescriptorSetLayout(VkDevice device, const std::vector<VkDescriptorSetLayoutBinding>& bindings) : m_Device(
+        DescriptorSetLayout(VkDevice device, const std::vector<VkDescriptorSetLayoutBinding> &bindings) : m_Device(
                 device) {
-           VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-           layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-           layoutInfo.bindingCount = bindings.size();
-           layoutInfo.pBindings = bindings.data();
+            VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = bindings.size();
+            layoutInfo.pBindings = bindings.data();
 
-           if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
-              throw std::runtime_error("failed to create descriptor set layout!");
+            if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
+                throw std::runtime_error("failed to create descriptor set layout!");
         }
 
-        DescriptorSetLayout(const DescriptorSetLayout& other) = delete;
+        DescriptorSetLayout(const DescriptorSetLayout &other) = delete;
 
-        DescriptorSetLayout& operator=(const DescriptorSetLayout& other) = delete;
+        auto operator=(const DescriptorSetLayout &other) -> DescriptorSetLayout & = delete;
 
-        DescriptorSetLayout(DescriptorSetLayout&& other) noexcept { Move(other); }
+        DescriptorSetLayout(DescriptorSetLayout &&other) noexcept { Move(other); }
 
-        DescriptorSetLayout& operator=(DescriptorSetLayout&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(DescriptorSetLayout &&other) noexcept -> DescriptorSetLayout & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkDescriptorSetLayout* ptr() const noexcept { return &m_Layout; }
+        auto ptr() const noexcept -> const VkDescriptorSetLayout * { return &m_Layout; }
 
-        const VkDescriptorSetLayout& data() const noexcept { return m_Layout; }
+        auto data() const noexcept -> const VkDescriptorSetLayout & { return m_Layout; }
     };
 
 
@@ -923,11 +1006,11 @@ namespace vk {
         VkDevice m_Device = nullptr;
         VkPipelineLayout m_Layout = nullptr;
 
-        void Move(PipelineLayout& other) noexcept {
-           m_Device = other.m_Device;
-           m_Layout = other.m_Layout;
-           other.m_Device = nullptr;
-           other.m_Layout = nullptr;
+        void Move(PipelineLayout &other) noexcept {
+            m_Device = other.m_Device;
+            m_Layout = other.m_Layout;
+            other.m_Device = nullptr;
+            other.m_Layout = nullptr;
         }
 
         void Release() noexcept { if (m_Layout) vkDestroyPipelineLayout(m_Device, m_Layout, nullptr); }
@@ -938,35 +1021,35 @@ namespace vk {
 
         PipelineLayout() = default;
 
-        explicit PipelineLayout(VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts = {},
-                                const std::vector<VkPushConstantRange>& pushConstants = {}) : m_Device(device) {
-           VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
-           pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-           pipelineLayoutInfo.setLayoutCount = descriptorSetLayouts.size();
-           pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
-           pipelineLayoutInfo.pushConstantRangeCount = pushConstants.size();
-           pipelineLayoutInfo.pPushConstantRanges = pushConstants.data();
+        explicit PipelineLayout(VkDevice device, const std::vector<VkDescriptorSetLayout> &descriptorSetLayouts = {},
+                                const std::vector<VkPushConstantRange> &pushConstants = {}) : m_Device(device) {
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = descriptorSetLayouts.size();
+            pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
+            pipelineLayoutInfo.pushConstantRangeCount = pushConstants.size();
+            pipelineLayoutInfo.pPushConstantRanges = pushConstants.data();
 
-           if (vkCreatePipelineLayout(m_Device, &pipelineLayoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
-              throw std::runtime_error("failed to create pipeline layout!");
+            if (vkCreatePipelineLayout(m_Device, &pipelineLayoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
+                throw std::runtime_error("failed to create pipeline layout!");
         }
 
-        PipelineLayout(const PipelineLayout& other) = delete;
+        PipelineLayout(const PipelineLayout &other) = delete;
 
-        PipelineLayout& operator=(const PipelineLayout& other) = delete;
+        auto operator=(const PipelineLayout &other) -> PipelineLayout & = delete;
 
-        PipelineLayout(PipelineLayout&& other) noexcept { Move(other); }
+        PipelineLayout(PipelineLayout &&other) noexcept { Move(other); }
 
-        PipelineLayout& operator=(PipelineLayout&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(PipelineLayout &&other) noexcept -> PipelineLayout & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkPipelineLayout* ptr() const noexcept { return &m_Layout; }
+        auto ptr() const noexcept -> const VkPipelineLayout * { return &m_Layout; }
 
-        const VkPipelineLayout& data() const noexcept { return m_Layout; }
+        auto data() const noexcept -> const VkPipelineLayout & { return m_Layout; }
     };
 
 
@@ -975,11 +1058,11 @@ namespace vk {
         VkDevice m_Device = nullptr;
         VkPipelineCache m_Cache = nullptr;
 
-        void Move(PipelineCache& other) noexcept {
-           m_Device = other.m_Device;
-           m_Cache = other.m_Cache;
-           other.m_Device = nullptr;
-           other.m_Cache = nullptr;
+        void Move(PipelineCache &other) noexcept {
+            m_Device = other.m_Device;
+            m_Cache = other.m_Cache;
+            other.m_Device = nullptr;
+            other.m_Cache = nullptr;
         }
 
         void Release() noexcept { if (m_Cache) vkDestroyPipelineCache(m_Device, m_Cache, nullptr); }
@@ -990,32 +1073,32 @@ namespace vk {
 
         PipelineCache() = default;
 
-        PipelineCache(VkDevice device, size_t dataSize, const void* data) : m_Device(device) {
-           VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {};
-           pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-           pipelineCacheCreateInfo.initialDataSize = dataSize;
-           pipelineCacheCreateInfo.pInitialData = data;
+        PipelineCache(VkDevice device, size_t dataSize, const void *data) : m_Device(device) {
+            VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {};
+            pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+            pipelineCacheCreateInfo.initialDataSize = dataSize;
+            pipelineCacheCreateInfo.pInitialData = data;
 
-           if (vkCreatePipelineCache(m_Device, &pipelineCacheCreateInfo, nullptr, &m_Cache) != VK_SUCCESS)
-              throw std::runtime_error("failed to create pipeline layout!");
+            if (vkCreatePipelineCache(m_Device, &pipelineCacheCreateInfo, nullptr, &m_Cache) != VK_SUCCESS)
+                throw std::runtime_error("failed to create pipeline layout!");
         }
 
-        PipelineCache(const PipelineCache& other) = delete;
+        PipelineCache(const PipelineCache &other) = delete;
 
-        PipelineCache& operator=(const PipelineCache& other) = delete;
+        auto operator=(const PipelineCache &other) -> PipelineCache & = delete;
 
-        PipelineCache(PipelineCache&& other) noexcept { Move(other); }
+        PipelineCache(PipelineCache &&other) noexcept { Move(other); }
 
-        PipelineCache& operator=(PipelineCache&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(PipelineCache &&other) noexcept -> PipelineCache & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkPipelineCache* ptr() const noexcept { return &m_Cache; }
+        auto ptr() const noexcept -> const VkPipelineCache * { return &m_Cache; }
 
-        const VkPipelineCache& data() const noexcept { return m_Cache; }
+        auto data() const noexcept -> const VkPipelineCache & { return m_Cache; }
     };
 
 
@@ -1024,11 +1107,11 @@ namespace vk {
         VkDevice m_Device = nullptr;
         VkPipeline m_Pipeline = nullptr;
 
-        void Move(Pipeline& other) noexcept {
-           m_Device = other.m_Device;
-           m_Pipeline = other.m_Pipeline;
-           other.m_Device = nullptr;
-           other.m_Pipeline = nullptr;
+        void Move(Pipeline &other) noexcept {
+            m_Device = other.m_Device;
+            m_Pipeline = other.m_Pipeline;
+            other.m_Device = nullptr;
+            other.m_Pipeline = nullptr;
         }
 
         void Release() noexcept { if (m_Pipeline) vkDestroyPipeline(m_Device, m_Pipeline, nullptr); }
@@ -1039,28 +1122,28 @@ namespace vk {
 
         Pipeline() = default;
 
-        Pipeline(VkDevice device, const VkGraphicsPipelineCreateInfo& createInfo, VkPipelineCache cache = nullptr)
+        Pipeline(VkDevice device, const VkGraphicsPipelineCreateInfo &createInfo, VkPipelineCache cache = nullptr)
                 : m_Device(device) {
-           if (vkCreateGraphicsPipelines(m_Device, cache, 1, &createInfo, nullptr, &m_Pipeline) != VK_SUCCESS)
-              throw std::runtime_error("failed to create graphics pipeline!");
+            if (vkCreateGraphicsPipelines(m_Device, cache, 1, &createInfo, nullptr, &m_Pipeline) != VK_SUCCESS)
+                throw std::runtime_error("failed to create graphics pipeline!");
         }
 
-        Pipeline(const Pipeline& other) = delete;
+        Pipeline(const Pipeline &other) = delete;
 
-        Pipeline& operator=(const Pipeline& other) = delete;
+        auto operator=(const Pipeline &other) -> Pipeline & = delete;
 
-        Pipeline(Pipeline&& other) noexcept { Move(other); }
+        Pipeline(Pipeline &&other) noexcept { Move(other); }
 
-        Pipeline& operator=(Pipeline&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Pipeline &&other) noexcept -> Pipeline & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkPipeline* ptr() const noexcept { return &m_Pipeline; }
+        auto ptr() const noexcept -> const VkPipeline * { return &m_Pipeline; }
 
-        const VkPipeline& data() const noexcept { return m_Pipeline; }
+        auto data() const noexcept -> const VkPipeline & { return m_Pipeline; }
     };
 
 
@@ -1069,11 +1152,11 @@ namespace vk {
         VkSampler m_Sampler = nullptr;
         VkDevice m_Device = nullptr;
 
-        void Move(Sampler& other) noexcept {
-           m_Sampler = other.m_Sampler;
-           m_Device = other.m_Device;
-           other.m_Sampler = nullptr;
-           other.m_Device = nullptr;
+        void Move(Sampler &other) noexcept {
+            m_Sampler = other.m_Sampler;
+            m_Device = other.m_Device;
+            other.m_Sampler = nullptr;
+            other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Sampler) vkDestroySampler(m_Device, m_Sampler, nullptr); }
@@ -1084,44 +1167,44 @@ namespace vk {
         Sampler() = default;
 
         explicit Sampler(VkDevice device, float maxLod) : m_Device(device) {
-           VkSamplerCreateInfo samplerInfo = {};
-           samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-           samplerInfo.magFilter = VK_FILTER_LINEAR;
-           samplerInfo.minFilter = VK_FILTER_LINEAR;
-           samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-           samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-           samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-           samplerInfo.anisotropyEnable = VK_TRUE;
-           samplerInfo.maxAnisotropy = 16;
-           samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-           samplerInfo.unnormalizedCoordinates = VK_FALSE;
-           samplerInfo.compareEnable = VK_FALSE;
-           samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-           samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-           samplerInfo.mipLodBias = 0.0f;
-           samplerInfo.minLod = 0.0f;
-           samplerInfo.maxLod = maxLod / 2;
+            VkSamplerCreateInfo samplerInfo = {};
+            samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            samplerInfo.magFilter = VK_FILTER_LINEAR;
+            samplerInfo.minFilter = VK_FILTER_LINEAR;
+            samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.anisotropyEnable = VK_TRUE;
+            samplerInfo.maxAnisotropy = 16;
+            samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+            samplerInfo.unnormalizedCoordinates = VK_FALSE;
+            samplerInfo.compareEnable = VK_FALSE;
+            samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+            samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            samplerInfo.mipLodBias = 0.0f;
+            samplerInfo.minLod = 0.0f;
+            samplerInfo.maxLod = maxLod / 2;
 
-           if (vkCreateSampler(m_Device, &samplerInfo, nullptr, &m_Sampler) != VK_SUCCESS)
-              throw std::runtime_error("failed to create texture sampler!");
+            if (vkCreateSampler(m_Device, &samplerInfo, nullptr, &m_Sampler) != VK_SUCCESS)
+                throw std::runtime_error("failed to create texture sampler!");
         }
 
-        Sampler(const Sampler& other) = delete;
+        Sampler(const Sampler &other) = delete;
 
-        Sampler& operator=(const Sampler& other) = delete;
+        auto operator=(const Sampler &other) -> Sampler & = delete;
 
-        Sampler(Sampler&& other) noexcept { Move(other); }
+        Sampler(Sampler &&other) noexcept { Move(other); }
 
-        Sampler& operator=(Sampler&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Sampler &&other) noexcept -> Sampler & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkSampler* ptr() const noexcept { return &m_Sampler; }
+        auto ptr() const noexcept -> const VkSampler * { return &m_Sampler; }
 
-        const VkSampler& data() const noexcept { return m_Sampler; }
+        auto data() const noexcept -> const VkSampler & { return m_Sampler; }
     };
 
 
@@ -1131,11 +1214,11 @@ namespace vk {
         VkShaderModule m_Module = nullptr;
         size_t m_CodeSize = 0;
 
-        void Move(ShaderModule& other) noexcept {
-           m_Device = other.m_Device;
-           m_Module = other.m_Module;
-           m_CodeSize = other.m_CodeSize;
-           other.m_Module = nullptr;
+        void Move(ShaderModule &other) noexcept {
+            m_Device = other.m_Device;
+            m_Module = other.m_Module;
+            m_CodeSize = other.m_CodeSize;
+            other.m_Module = nullptr;
         }
 
         void Release() noexcept { if (m_Module) vkDestroyShaderModule(m_Device, m_Module, nullptr); }
@@ -1143,28 +1226,28 @@ namespace vk {
     public:
         ShaderModule() = default;
 
-        ShaderModule(VkDevice device, const std::string& filename);
+        ShaderModule(VkDevice device, const std::string &filename);
 
         ~ShaderModule() { Release(); }
 
-        ShaderModule(const ShaderModule& other) = delete;
+        ShaderModule(const ShaderModule &other) = delete;
 
-        ShaderModule& operator=(const ShaderModule& other) = delete;
+        auto operator=(const ShaderModule &other) -> ShaderModule & = delete;
 
-        ShaderModule(ShaderModule&& other) noexcept { Move(other); }
+        ShaderModule(ShaderModule &&other) noexcept { Move(other); }
 
-        ShaderModule& operator=(ShaderModule&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(ShaderModule &&other) noexcept -> ShaderModule & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkShaderModule* ptr() const noexcept { return &m_Module; }
+        auto ptr() const noexcept -> const VkShaderModule * { return &m_Module; }
 
-        const VkShaderModule& data() const noexcept { return m_Module; }
+        auto data() const noexcept -> const VkShaderModule & { return m_Module; }
 
-        size_t size() const { return m_CodeSize; }
+        auto size() const -> size_t { return m_CodeSize; }
     };
 
 
@@ -1173,11 +1256,11 @@ namespace vk {
         VkInstance m_Instance = nullptr;
         VkSurfaceKHR m_Surface = nullptr;
 
-        void Move(Surface& other) noexcept {
-           m_Surface = other.m_Surface;
-           m_Instance = other.m_Instance;
-           other.m_Surface = nullptr;
-           other.m_Instance = nullptr;
+        void Move(Surface &other) noexcept {
+            m_Surface = other.m_Surface;
+            m_Instance = other.m_Instance;
+            other.m_Surface = nullptr;
+            other.m_Instance = nullptr;
         }
 
         void Release() noexcept { if (m_Surface) vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr); }
@@ -1187,24 +1270,24 @@ namespace vk {
 
         Surface() = default;
 
-        Surface(VkInstance instance, GLFWwindow* window);
+        Surface(VkInstance instance, GLFWwindow *window);
 
-        Surface(const Surface& other) = delete;
+        Surface(const Surface &other) = delete;
 
-        Surface& operator=(const Surface& other) = delete;
+        auto operator=(const Surface &other) -> Surface & = delete;
 
-        Surface(Surface&& other) noexcept { Move(other); }
+        Surface(Surface &&other) noexcept { Move(other); }
 
-        Surface& operator=(Surface&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Surface &&other) noexcept -> Surface & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
-        const VkSurfaceKHR* ptr() const noexcept { return &m_Surface; }
+        auto ptr() const noexcept -> const VkSurfaceKHR * { return &m_Surface; }
 
-        const VkSurfaceKHR& data() const noexcept { return m_Surface; }
+        auto data() const noexcept -> const VkSurfaceKHR & { return m_Surface; }
     };
 
 
@@ -1213,16 +1296,16 @@ namespace vk {
         VkInstance m_Instance = nullptr;
         VkDebugUtilsMessengerEXT m_DebugMessenger = nullptr;
 
-        static constexpr std::array<const char*, 2> s_ValidationLayers = {
+        static constexpr std::array<const char *, 2> s_ValidationLayers = {
                 "VK_LAYER_KHRONOS_validation",
                 "VK_LAYER_LUNARG_monitor"
         };
 
-        void Move(Instance& other) noexcept {
-           m_Instance = other.m_Instance;
-           m_DebugMessenger = other.m_DebugMessenger;
-           other.m_Instance = nullptr;
-           other.m_DebugMessenger = nullptr;
+        void Move(Instance &other) noexcept {
+            m_Instance = other.m_Instance;
+            m_DebugMessenger = other.m_DebugMessenger;
+            other.m_Instance = nullptr;
+            other.m_DebugMessenger = nullptr;
         }
 
         void Release() noexcept;
@@ -1232,24 +1315,24 @@ namespace vk {
 
         explicit Instance(bool enableValidation);
 
-        Instance(const Instance& other) = delete;
+        Instance(const Instance &other) = delete;
 
-        Instance& operator=(const Instance& other) = delete;
+        auto operator=(const Instance &other) -> Instance & = delete;
 
-        Instance(Instance&& other) noexcept { Move(other); }
+        Instance(Instance &&other) noexcept { Move(other); }
 
-        Instance& operator=(Instance&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Instance &&other) noexcept -> Instance & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
         void setupDebugMessenger();
 
-        const VkInstance* ptr() const noexcept { return &m_Instance; }
+        auto ptr() const noexcept -> const VkInstance * { return &m_Instance; }
 
-        const VkInstance& data() const noexcept { return m_Instance; }
+        auto data() const noexcept -> const VkInstance & { return m_Instance; }
 
     };
 
@@ -1263,15 +1346,15 @@ namespace vk {
         std::vector<VkImage> m_Images;
         std::vector<ImageView> m_ImageViews;
 
-        void Move(Swapchain& other) noexcept {
-           m_Swapchain = other.m_Swapchain;
-           m_Device = other.m_Device;
-           m_Format = other.m_Format;
-           m_Extent = other.m_Extent;
-           m_Images = std::move(other.m_Images);
-           m_ImageViews = std::move(other.m_ImageViews);
-           other.m_Swapchain = nullptr;
-           other.m_Device = nullptr;
+        void Move(Swapchain &other) noexcept {
+            m_Swapchain = other.m_Swapchain;
+            m_Device = other.m_Device;
+            m_Format = other.m_Format;
+            m_Extent = other.m_Extent;
+            m_Images = std::move(other.m_Images);
+            m_ImageViews = std::move(other.m_ImageViews);
+            other.m_Swapchain = nullptr;
+            other.m_Device = nullptr;
         }
 
     public:
@@ -1279,43 +1362,43 @@ namespace vk {
 
         Swapchain() = default;
 
-        Swapchain(VkDevice device, const std::set<uint32_t>& queueIndices, VkExtent2D extent, VkSurfaceKHR surface,
-                  const VkSurfaceCapabilitiesKHR& capabilities, const VkSurfaceFormatKHR& surfaceFormat,
+        Swapchain(VkDevice device, const std::set<uint32_t> &queueIndices, VkExtent2D extent, VkSurfaceKHR surface,
+                  const VkSurfaceCapabilitiesKHR &capabilities, const VkSurfaceFormatKHR &surfaceFormat,
                   VkPresentModeKHR presentMode);
 
-        Swapchain(const Swapchain& other) = delete;
+        Swapchain(const Swapchain &other) = delete;
 
-        Swapchain& operator=(const Swapchain& other) = delete;
+        auto operator=(const Swapchain &other) -> Swapchain & = delete;
 
-        Swapchain(Swapchain&& other) noexcept { Move(other); }
+        Swapchain(Swapchain &&other) noexcept { Move(other); }
 
-        Swapchain& operator=(Swapchain&& other) noexcept {
-           if (this == &other) return *this;
-           Release();
-           Move(other);
-           return *this;
+        auto operator=(Swapchain &&other) noexcept -> Swapchain & {
+            if (this == &other) return *this;
+            Release();
+            Move(other);
+            return *this;
         };
 
         void Release() noexcept {
-           if (m_Swapchain) {
-              vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
-              m_Swapchain = nullptr;
-           }
+            if (m_Swapchain) {
+                vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+                m_Swapchain = nullptr;
+            }
         }
 
-        const VkFormat& ImageFormat() const { return m_Format; }
+        auto ImageFormat() const -> const VkFormat & { return m_Format; }
 
-        const VkExtent2D& Extent() const { return m_Extent; }
+        auto Extent() const -> const VkExtent2D & { return m_Extent; }
 
-        const std::vector<VkImage>& Images() const { return m_Images; }
+        auto Images() const -> const std::vector<VkImage> & { return m_Images; }
 
-        uint32_t ImageCount() const { return m_Images.size(); }
+        auto ImageCount() const -> uint32_t { return m_Images.size(); }
 
-        const std::vector<ImageView>& ImageViews() const { return m_ImageViews; }
+        auto ImageViews() const -> const std::vector<ImageView> & { return m_ImageViews; }
 
-        const VkSwapchainKHR* ptr() const noexcept { return &m_Swapchain; }
+        auto ptr() const noexcept -> const VkSwapchainKHR * { return &m_Swapchain; }
 
-        const VkSwapchainKHR& data() const noexcept { return m_Swapchain; }
+        auto data() const noexcept -> const VkSwapchainKHR & { return m_Swapchain; }
     };
 }
 
@@ -1326,19 +1409,19 @@ private:
     std::vector<VertexIndex> m_Indices;
 
 public:
-    explicit Model(const char* filepath);
+    explicit Model(const char *filepath);
 
-    const Vertex* Vertices() { return m_Vertices.data(); }
+    auto Vertices() -> const Vertex * { return m_Vertices.data(); }
 
-    const VertexIndex* Indices() { return m_Indices.data(); }
+    auto Indices() -> const VertexIndex * { return m_Indices.data(); }
 
-    VkDeviceSize VertexDataSize() { return sizeof(Vertex) * m_Vertices.size(); }
+    auto VertexDataSize() -> VkDeviceSize { return sizeof(Vertex) * m_Vertices.size(); }
 
-    VkDeviceSize IndexDataSize() { return sizeof(VertexIndex) * m_Indices.size(); }
+    auto IndexDataSize() -> VkDeviceSize { return sizeof(VertexIndex) * m_Indices.size(); }
 
-    size_t IndexCount() { return m_Indices.size(); }
+    auto IndexCount() -> size_t { return m_Indices.size(); }
 
-    size_t VertexCount() { return m_Vertices.size(); }
+    auto VertexCount() -> size_t { return m_Vertices.size(); }
 };
 
 #endif //VULKAN_VULKAN_WRAPPERS_H

@@ -5,6 +5,6 @@
 
 
 ShaderProgramVk::ShaderProgramVk(const char* filepath) {
-   auto& gfxContext = static_cast<const GfxContextVk&>(Application::GetGraphicsContext());
-   m_ShaderModule = vk::ShaderModule(gfxContext.GetDevice(), filepath);
+   auto& device = static_cast<GfxContextVk&>(Application::GetGraphicsContext()).GetDevice();
+   m_ShaderModule = device.createShaderModule(filepath);
 }

@@ -1,6 +1,7 @@
 #ifndef VULKAN_LAYER_H
 #define VULKAN_LAYER_H
 
+#include <iostream>
 #include <string>
 #include "Events/Event.h"
 #include "Events/WindowEvents.h"
@@ -13,22 +14,24 @@ protected:
 
 public:
     explicit Layer(const char* name = "Layer") : m_DebugName(name) {}
-    virtual ~Layer() = default;
+    virtual ~Layer() { std::cout << "[Application] " << m_DebugName << "::Destroyed" << std::endl; };
 
-    virtual void OnAttach() {}
-    virtual void OnDetach() {}
-    virtual void OnUpdate() {}
+    virtual void OnAttach() { std::cout << "[Application] " << m_DebugName << "::Attached" << std::endl; }
+    virtual void OnDetach() { std::cout << "[Application] " << m_DebugName << "::Detached" << std::endl; }
+    virtual void OnUpdate(uint32_t) {}
+    virtual auto OnDraw(uint32_t) -> VkCommandBuffer { return nullptr; };
+
     virtual void OnEvent(Event&) {}
-    virtual bool OnWindowResize(WindowResizeEvent&) { return true; }
-    virtual bool OnMouseMove(MouseMoveEvent&) { return true; };
-    virtual bool OnMouseButtonPress(MouseButtonPressEvent&) { return true; }
-    virtual bool OnMouseButtonRelease(MouseButtonReleaseEvent&) { return true; }
-    virtual bool OnMouseScroll(MouseScrollEvent&) { return true; }
-    virtual bool OnKeyPress(KeyPressEvent&) { return true; }
-    virtual bool OnKeyRelease(KeyReleaseEvent&) { return true; }
-    virtual bool OnCharacterPress(CharacterPressEvent&) { return true; }
+    virtual auto OnWindowResize(WindowResizeEvent&) -> bool { return true; }
+    virtual auto OnMouseMove(MouseMoveEvent&) -> bool { return true; };
+    virtual auto OnMouseButtonPress(MouseButtonPressEvent&) -> bool { return true; }
+    virtual auto OnMouseButtonRelease(MouseButtonReleaseEvent&) -> bool { return true; }
+    virtual auto OnMouseScroll(MouseScrollEvent&) -> bool { return true; }
+    virtual auto OnKeyPress(KeyPressEvent&) -> bool { return true; }
+    virtual auto OnKeyRelease(KeyReleaseEvent&) -> bool { return true; }
+    virtual auto OnCharacterPress(CharacterPressEvent&) -> bool { return true; }
 
-    const std::string& LayerName() const { return m_DebugName; }
+    auto LayerName() const -> const std::string& { return m_DebugName; }
 };
 
 #endif //VULKAN_LAYER_H

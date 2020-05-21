@@ -14,7 +14,7 @@ public:
 
    static std::unique_ptr<RenderPass> Create();
 
-   virtual VkRenderPass& GetVkHandle() = 0;
+   virtual auto VkHandle() const -> const void* { return nullptr; }
 };
 
 

@@ -10,33 +10,35 @@
 
 class Texture2D {
 protected:
-   int m_Width = 0;
-   int m_Height = 0;
-   int m_Channels = 0;
-   std::vector<unsigned char> m_Data;
+    int m_Width = 0;
+    int m_Height = 0;
+    int m_Channels = 0;
+    std::vector<unsigned char> m_Data;
 
-   Texture2D(unsigned char* data, int width, int height, int channels);
+    Texture2D(unsigned char *data, int width, int height, int channels);
 
 public:
-   uint32_t Width() const { return m_Width; }
+    virtual ~Texture2D() = default;
 
-   uint32_t Height() const { return m_Height; }
+    auto Width() const -> uint32_t { return m_Width; }
 
-   std::pair<uint32_t, uint32_t> Extent() const {
-      return {static_cast<uint32_t>(m_Width), static_cast<uint32_t>(m_Height)};
-   }
+    auto Height() const -> uint32_t { return m_Height; }
 
-   uint64_t Size() const { return m_Data.size(); }
+    auto Extent() const -> std::pair<uint32_t, uint32_t> {
+        return {static_cast<uint32_t>(m_Width), static_cast<uint32_t>(m_Height)};
+    }
 
-   const unsigned char* Data() const { return m_Data.data(); }
+    auto Size() const -> uint64_t { return m_Data.size(); }
 
-   uint32_t MipLevels() const { return std::floor(std::log2(std::max(m_Width, m_Height))) + 1; }
+    auto Data() const -> const unsigned char * { return m_Data.data(); }
 
-   static std::unique_ptr<Texture2D> Create(const char* filepath);
+    auto MipLevels() const -> uint32_t { return std::floor(std::log2(std::max(m_Width, m_Height))) + 1; }
 
-   static std::unique_ptr<Texture2D> Create(unsigned char* data, int width, int height, int channels = 4);
+    static auto Create(const char *filepath) -> std::unique_ptr<Texture2D>;
 
-   virtual void Upload() {}
+    static auto Create(unsigned char *data, int width, int height, int channels = 4) -> std::unique_ptr<Texture2D>;
+
+    virtual void Upload() {}
 };
 
 

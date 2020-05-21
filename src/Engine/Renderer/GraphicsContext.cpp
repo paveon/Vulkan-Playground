@@ -1,3 +1,4 @@
+#include <iostream>
 #include "GraphicsContext.h"
 #include "Platform/Vulkan/GraphicsContextVk.h"
 
@@ -9,4 +10,8 @@ std::unique_ptr<GfxContext> GfxContext::Create(void* windowHandle) {
    }
 
    return nullptr;
+}
+
+GfxContext::~GfxContext() {
+    std::cout << "[GfxContext] Destroying rendering context" << std::endl;
 }

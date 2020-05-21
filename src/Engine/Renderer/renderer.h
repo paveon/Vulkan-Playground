@@ -30,88 +30,66 @@ enum class GraphicsAPI {
     VULKAN = 0
 };
 
-class ImGuiLayer;
+class WindowResizeEvent;
 
 class Renderer {
 public:
-    Renderer(GfxContextVk& ctx);
+    explicit Renderer(GfxContextVk& ctx);
 
     ~Renderer();
 
-    static GraphicsAPI GetCurrentAPI() { return s_API; }
+    static auto GetCurrentAPI() -> GraphicsAPI { return s_API; }
 
-    void AcquireNextImage();
+    auto AcquireNextImage() -> uint32_t;
 
-    void DrawFrame();
+    void DrawFrame(std::vector<VkCommandBuffer> &submitBuffers);
 
-    void RecreateSwapchain(uint32_t width, uint32_t height);
+    void RecreateSwapchain();
 
-    RenderPass& GetRenderPass() const { return *m_RenderPass; }
+    auto GetRenderPass() const -> RenderPass& { return *m_RenderPass; }
 
-    const Device& GetDevice() const { return m_Device; }
+    auto GetDevice() const -> Device& { return m_Device; }
 
-    uint32_t GetCurrentImageIndex() const { return m_ImageIndex; }
+    auto GetCurrentImageIndex() const -> uint32_t { return m_ImageIndex; }
 
-    std::pair<uint32_t, uint32_t> FramebufferSize() const { return m_Context.FramebufferSize(); }
+    auto GetFramebuffer() -> vk::Framebuffer& { return *m_Framebuffers[m_ImageIndex]; }
 
-    ImGuiLayer* m_ImGui = nullptr;
+    auto FramebufferSize() const -> std::pair<uint32_t, uint32_t> { return m_Context.FramebufferSize(); }
+
+    void OnWindowResize(WindowResizeEvent& e);
 private:
     static GraphicsAPI s_API;
 
-    const char* vertShaderPath = "shaders/triangle.vert.spv";
-    const char* fragShaderPath = "shaders/triangle.frag.spv";
     const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
-    GfxContext& m_Context;
+    GfxContextVk& m_Context;
+    Device& m_Device;
 
-    const Device& m_Device;
-    vk::Swapchain& m_Swapchain;
+    vk::CommandPool* m_GfxCmdPool;
+    vk::CommandPool* m_TransferCmdPool;
+    vk::CommandBuffers* m_GraphicsCmdBuffers;
+    vk::CommandBuffers* m_TransferCmdBuffers;
 
-    vk::CommandPool m_GraphicsCmdPool;
-    vk::CommandPool m_TransferCmdPool;
-    vk::CommandBuffers m_GraphicsCmdBuffers;
-    vk::CommandBuffers m_TransferCmdBuffers;
+    vk::Image* m_ColorImage;
+    vk::DeviceMemory* m_ColorImageMemory;
+    vk::ImageView* m_ColorImageView;
 
-    std::unique_ptr<Model> m_Model;
-    DeviceBuffer m_VertexBuffer;
-    DeviceBuffer m_IndexBuffer;
+    vk::Image* m_DepthImage;
+    vk::DeviceMemory* m_DepthImageMemory;
+    vk::ImageView* m_DepthImageView;
 
-    std::unique_ptr<Texture2D> m_Texture;
+    std::vector<vk::Framebuffer*> m_Framebuffers;
 
-    vk::Image m_ColorImage;
-    vk::DeviceMemory m_ColorImageMemory;
-    vk::ImageView m_ColorImageView;
-
-    vk::Image m_DepthImage;
-    vk::DeviceMemory m_DepthImageMemory;
-    vk::ImageView m_DepthImageView;
-
-    std::vector<vk::Buffer> m_UniformBuffers;
-    std::vector<vk::DeviceMemory> m_UniformMemory;
-
-    std::vector<vk::Framebuffer> m_SwapchainFramebuffers;
-
-    std::vector<vk::Semaphore> m_AcquireSemaphores;
-    std::vector<vk::Semaphore> m_ReleaseSemaphores;
-    std::vector<vk::Fence> m_Fences;
+    std::vector<vk::Semaphore*> m_AcquireSemaphores;
+    std::vector<vk::Semaphore*> m_ReleaseSemaphores;
+    std::vector<vk::Fence*> m_Fences;
 
     std::unique_ptr<RenderPass> m_RenderPass;
-    std::unique_ptr<Pipeline> m_GraphicsPipeline;
 
     size_t m_FrameIndex = 0;
     uint32_t m_ImageIndex = 0;
 
-    bool m_FramebufferResized = false;
-
-    void recordCommandBuffer(VkCommandBuffer cmdBuffer, size_t index);
-
     void createSyncObjects();
-
-    void createUniformBuffers(size_t count);
-
-    void cleanupSwapchain();
-
-    void updateUniformBuffer(uint32_t currentImage);
 };
 
 

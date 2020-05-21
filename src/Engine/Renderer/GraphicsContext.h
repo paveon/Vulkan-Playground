@@ -8,11 +8,15 @@ protected:
     GfxContext() = default;
 
 public:
+    virtual ~GfxContext();
+
     virtual void Init() = 0;
 
-   virtual std::pair<uint32_t, uint32_t> FramebufferSize() const = 0;
+    virtual void RecreateSwapchain() = 0;
 
-    static std::unique_ptr<GfxContext> Create(void* windowHandle);
+    virtual std::pair<uint32_t, uint32_t> FramebufferSize() const = 0;
+
+    static std::unique_ptr<GfxContext> Create(void *windowHandle);
 };
 
 #endif //VULKAN_GRAPHICSCONTEXT_H
