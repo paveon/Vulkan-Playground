@@ -76,6 +76,6 @@ auto chooseSwapExtent(VkExtent2D desiredExtent, const VkSurfaceCapabilitiesKHR &
 
 auto hasStencilComponent(VkFormat format) -> bool;
 
-auto roundUp(size_t number, size_t multiple) -> size_t;
+auto findMemoryType(VkPhysicalDevice physDevice, uint32_t typeBits, VkMemoryPropertyFlags flags) -> uint32_t;
 
 #endif //VULKAN_UTILS_H

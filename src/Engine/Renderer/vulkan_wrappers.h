@@ -8,6 +8,8 @@
 #include <array>
 #include <mathlib.h>
 
+auto roundUp(size_t number, size_t multiple) -> size_t;
+
 typedef struct GLFWwindow GLFWwindow;
 
 template<class T>
@@ -112,7 +114,7 @@ namespace vk {
             return *this;
         };
 
-        auto ptr() const noexcept -> const VkDevice* { return &m_Device; }
+        auto ptr() const noexcept -> const VkDevice * { return &m_Device; }
 
         auto data() const noexcept -> const VkDevice & { return m_Device; }
 
@@ -153,9 +155,9 @@ namespace vk {
 
         auto operator=(CommandBuffer &&other) = delete;
 
-        auto ptr() const noexcept -> const VkCommandBuffer* { return &m_Buffer; }
+        auto ptr() const noexcept -> const VkCommandBuffer * { return &m_Buffer; }
 
-        auto data() const noexcept -> const VkCommandBuffer& { return m_Buffer; }
+        auto data() const noexcept -> const VkCommandBuffer & { return m_Buffer; }
 
         void Begin(VkCommandBufferUsageFlags flags = 0) const {
             VkCommandBufferBeginInfo beginInfo = {};
@@ -274,7 +276,6 @@ namespace vk {
 //            operator[](index).Submit(submitInfo, cmdQueue, fence);
 //        }
     };
-
 
 
     class Semaphore {
@@ -541,6 +542,7 @@ namespace vk {
         VkImageLayout m_CurrentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkPipelineStageFlags m_CurrentStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         uint32_t m_MipLevels = 1;
+        VkMemoryRequirements m_MemoryInfo{};
 
         static constexpr VkImageMemoryBarrier s_BaseBarrier = {
                 VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -569,11 +571,24 @@ namespace vk {
             m_CurrentStage = other.m_CurrentStage;
             m_MipLevels = other.m_MipLevels;
             Extent = other.Extent;
+            m_MemoryInfo = other.m_MemoryInfo;
             other.m_Image = nullptr;
             other.m_Device = nullptr;
         }
 
         void Release() noexcept { if (m_Image) vkDestroyImage(m_Device, m_Image, nullptr); }
+
+        void CreateImage(const VkImageCreateInfo &createInfo) {
+            m_Format = createInfo.format;
+            m_MipLevels = createInfo.mipLevels;
+            Extent.width = createInfo.extent.width;
+            Extent.height = createInfo.extent.height;
+
+            if (vkCreateImage(m_Device, &createInfo, nullptr, &m_Image) != VK_SUCCESS)
+                throw std::runtime_error("failed to create image!");
+
+            vkGetImageMemoryRequirements(m_Device, m_Image, &m_MemoryInfo);
+        }
 
     public:
         VkExtent2D Extent = {};
@@ -582,11 +597,16 @@ namespace vk {
 
         Image() = default;
 
-        Image(VkDevice device, const std::set<uint32_t> &queueIndices, const VkExtent2D &extent, uint32_t mipLevels,
+        Image(VkDevice device,
+              const std::set<uint32_t> &queueIndices,
+              const VkExtent2D &extent, uint32_t mipLevels,
               VkSampleCountFlagBits samples,
-              VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage) : m_Device(device), m_Format(format),
-                                                                                m_MipLevels(mipLevels),
-                                                                                Extent(extent) {
+              VkFormat format,
+              VkImageTiling tiling,
+              VkImageUsageFlags usage) :
+                m_Device(device), m_Format(format),
+                m_MipLevels(mipLevels),
+                Extent(extent) {
 
             VkImageCreateInfo imageInfo = {};
             imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -612,17 +632,11 @@ namespace vk {
                 imageInfo.pQueueFamilyIndices = uniqueIndices.data();
             }
 
-            if (vkCreateImage(m_Device, &imageInfo, nullptr, &m_Image) != VK_SUCCESS)
-                throw std::runtime_error("failed to create image!");
+            CreateImage(imageInfo);
         }
 
         Image(VkDevice device, const VkImageCreateInfo &createInfo) : m_Device(device) {
-            m_Format = createInfo.format;
-            m_MipLevels = createInfo.mipLevels;
-            Extent.width = createInfo.extent.width;
-            Extent.height = createInfo.extent.height;
-            if (vkCreateImage(m_Device, &createInfo, nullptr, &m_Image) != VK_SUCCESS)
-                throw std::runtime_error("failed to create image!");
+            CreateImage(createInfo);
         }
 
         Image(const Image &other) = delete;
@@ -654,6 +668,8 @@ namespace vk {
                           VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
 
         void GenerateMipmaps(VkPhysicalDevice physicalDevice, const CommandBuffer &cmdBuffer);
+
+        auto MemoryInfo() const -> const VkMemoryRequirements & { return m_MemoryInfo; }
 
         void BindMemory(VkDeviceMemory memory, VkDeviceSize offset) {
             if (vkBindImageMemory(m_Device, m_Image, memory, offset) != VK_SUCCESS)
@@ -771,14 +787,7 @@ namespace vk {
             }
         }
 
-    public:
-        void *m_Mapping = nullptr;
-
-        ~DeviceMemory() { Release(); }
-
-        DeviceMemory() = default;
-
-        DeviceMemory(VkDevice device, uint32_t memoryTypeIdx, VkDeviceSize size) : m_Device(device) {
+        void Allocate(uint32_t memoryTypeIdx, VkDeviceSize size) {
             VkMemoryAllocateInfo allocInfo = {};
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             allocInfo.allocationSize = size;
@@ -786,6 +795,22 @@ namespace vk {
 
             if (vkAllocateMemory(m_Device, &allocInfo, nullptr, &m_Memory) != VK_SUCCESS)
                 throw std::runtime_error("failed to allocate buffer memory!");
+        }
+
+    public:
+        void *m_Mapping = nullptr;
+
+        ~DeviceMemory() { Release(); }
+
+        DeviceMemory() = default;
+
+        DeviceMemory(VkPhysicalDevice physDevice,
+                     VkDevice device,
+                     const std::vector<const Image *> &images,
+                     VkMemoryPropertyFlags flags);
+
+        DeviceMemory(VkDevice device, uint32_t memoryTypeIdx, VkDeviceSize size) : m_Device(device) {
+            Allocate(memoryTypeIdx, size);
         }
 
         DeviceMemory(const DeviceMemory &other) = delete;
@@ -1341,6 +1366,7 @@ namespace vk {
     private:
         VkDevice m_Device = nullptr;
         VkSwapchainKHR m_Swapchain = nullptr;
+        VkSurfaceCapabilitiesKHR m_Capabilities{};
         VkFormat m_Format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_Extent = {};
         std::vector<VkImage> m_Images;
@@ -1351,6 +1377,7 @@ namespace vk {
             m_Device = other.m_Device;
             m_Format = other.m_Format;
             m_Extent = other.m_Extent;
+            m_Capabilities = other.m_Capabilities;
             m_Images = std::move(other.m_Images);
             m_ImageViews = std::move(other.m_ImageViews);
             other.m_Swapchain = nullptr;
@@ -1395,6 +1422,8 @@ namespace vk {
         auto ImageCount() const -> uint32_t { return m_Images.size(); }
 
         auto ImageViews() const -> const std::vector<ImageView> & { return m_ImageViews; }
+
+        auto Capabilities() const -> const VkSurfaceCapabilitiesKHR & { return m_Capabilities; }
 
         auto ptr() const noexcept -> const VkSwapchainKHR * { return &m_Swapchain; }
 

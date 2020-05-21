@@ -54,24 +54,6 @@ auto Device::pickPhysicalDevice() -> VkPhysicalDevice {
 }
 
 
-auto Device::findMemoryType(
-        const VkMemoryRequirements &requirements,
-        VkMemoryPropertyFlags properties
-) const -> uint32_t {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(m_PhysicalDevice, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((requirements.memoryTypeBits & (1UL << i)) &&
-            (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("failed to find suitable memory type!");
-}
-
-
 auto Device::createSwapChain(const std::set<uint32_t> &queueIndices, VkExtent2D extent) -> Swapchain * {
     VkSurfaceCapabilitiesKHR capabilities = getSurfaceCapabilities();
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(m_LogicalDevice.getSurfaceFormats());

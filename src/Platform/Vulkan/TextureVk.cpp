@@ -23,8 +23,9 @@ void Texture2DVk::Upload() {
 
     Device &device = gfxContext.GetDevice();
     m_TextureImage = device.createImage(imageInfo);
-    m_TextureMemory = device.allocateImageMemory(*m_TextureImage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vkBindImageMemory(device, m_TextureImage->data(), m_TextureMemory->data(), 0);
+    m_TextureMemory = device.allocateImageMemory({m_TextureImage}, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    m_TextureImage->BindMemory(m_TextureMemory->data(), 0);
+//    vkBindImageMemory(device, m_TextureImage->data(), m_TextureMemory->data(), 0);
 
     m_TextureView = device.createImageView(*m_TextureImage, VK_IMAGE_ASPECT_COLOR_BIT);
 //   m_TextureView = m_TextureImage->createView(VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);

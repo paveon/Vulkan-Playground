@@ -4,13 +4,19 @@
 
 #include "vulkan_wrappers.h"
 #include "utils.h"
-#include <fstream>
 
 #include <GLFW/glfw3.h>
 #include <unordered_map>
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <iostream>
+
+
+auto roundUp(size_t number, size_t multiple) -> size_t {
+    assert(multiple && ((multiple & (multiple - 1)) == 0));
+    return (number + multiple - 1) & -multiple;
+}
+
 
 namespace std {
     template<>
@@ -456,15 +462,20 @@ namespace vk {
     }
 
 
-    Swapchain::Swapchain(VkDevice device, const std::set<uint32_t> &queueIndices, VkExtent2D extent,
-                         VkSurfaceKHR surface,
-                         const VkSurfaceCapabilitiesKHR &capabilities,
-                         const VkSurfaceFormatKHR &surfaceFormat, VkPresentModeKHR presentMode) : m_Device(device),
-                                                                                                  m_Extent(extent) {
+    Swapchain::Swapchain(
+            VkDevice device,
+            const std::set<uint32_t> &queueIndices,
+            VkExtent2D extent,
+            VkSurfaceKHR surface,
+            const VkSurfaceCapabilitiesKHR &capabilities,
+            const VkSurfaceFormatKHR &surfaceFormat, VkPresentModeKHR presentMode) :
+            m_Device(device),
+            m_Capabilities(capabilities),
+            m_Extent(extent) {
 
-        uint32_t imageCount = capabilities.minImageCount + 1;
-        if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount)
-            imageCount = capabilities.maxImageCount;
+        uint32_t imageCount = m_Capabilities.minImageCount + 1;
+        if (m_Capabilities.maxImageCount > 0 && imageCount > m_Capabilities.maxImageCount)
+            imageCount = m_Capabilities.maxImageCount;
 
         m_Format = surfaceFormat.format;
 
@@ -477,7 +488,7 @@ namespace vk {
         createInfo.imageExtent = m_Extent;
         createInfo.imageArrayLayers = 1;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        createInfo.preTransform = capabilities.currentTransform;
+        createInfo.preTransform = m_Capabilities.currentTransform;
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         createInfo.presentMode = presentMode;
         createInfo.clipped = VK_TRUE;
@@ -563,6 +574,21 @@ namespace vk {
         if (glfwCreateWindowSurface(m_Instance, window, nullptr, &m_Surface) != VK_SUCCESS) {
             throw std::runtime_error("failed to create window surface!");
         }
+    }
+
+    DeviceMemory::DeviceMemory(VkPhysicalDevice physDevice,
+                               VkDevice device,
+                               const std::vector<const Image *> &images,
+                               VkMemoryPropertyFlags flags) : m_Device(device) {
+
+        uint32_t resultTypeBits = ~(0U);
+        uint32_t totalSize = 0;
+        for (const auto *image : images) {
+            resultTypeBits &= image->MemoryInfo().memoryTypeBits;
+            totalSize += roundUp(image->MemoryInfo().size, image->MemoryInfo().alignment);
+        }
+
+        Allocate(findMemoryType(physDevice, resultTypeBits, flags), totalSize);
     }
 }
 

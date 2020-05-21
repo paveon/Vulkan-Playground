@@ -24,8 +24,8 @@ private:
 
     std::unique_ptr<vk::Swapchain> m_Swapchain;
 
-    vk::CommandPool* m_GfxCmdPool;
-    vk::CommandPool* m_TransferCmdPool;
+    vk::CommandPool *m_GfxCmdPool;
+    vk::CommandPool *m_TransferCmdPool;
 
     std::vector<std::unique_ptr<vk::Pipeline>> m_Pipelines;
     std::vector<std::unique_ptr<vk::PipelineLayout>> m_PipelineLayouts;
@@ -112,9 +112,9 @@ public:
 
     auto TransferQueueIdx() const -> uint32_t { return m_LogicalDevice.TransferQueueIdx(); }
 
-    auto GfxPool() const -> vk::CommandPool* { return m_GfxCmdPool; }
+    auto GfxPool() const -> vk::CommandPool * { return m_GfxCmdPool; }
 
-    auto TransferPool() const -> vk::CommandPool* { return m_TransferCmdPool; }
+    auto TransferPool() const -> vk::CommandPool * { return m_TransferCmdPool; }
 
 
     auto queue(QueueFamily family) const -> VkQueue { return m_LogicalDevice.queue(family); }
@@ -136,19 +136,20 @@ public:
     auto allocateBufferMemory(const vk::Buffer &buffer, VkMemoryPropertyFlags properties) -> vk::DeviceMemory * {
         VkMemoryRequirements memRequirements;
         vkGetBufferMemoryRequirements(m_LogicalDevice.data(), buffer.data(), &memRequirements);
+        auto memoryTypeIdx = getMemoryType(memRequirements.memoryTypeBits, properties);
         m_DeviceMemories.emplace_back(
-                std::make_unique<vk::DeviceMemory>(m_LogicalDevice.data(), findMemoryType(memRequirements, properties),
-                                                   memRequirements.size));
+                std::make_unique<vk::DeviceMemory>(m_LogicalDevice.data(), memoryTypeIdx, memRequirements.size));
+
         return m_DeviceMemories.back().get();
     }
 
-    auto allocateImageMemory(const vk::Image &image, VkMemoryPropertyFlags properties) -> vk::DeviceMemory * {
-        VkMemoryRequirements memRequirements;
-        vkGetImageMemoryRequirements(m_LogicalDevice.data(), image.data(), &memRequirements);
+    auto allocateImageMemory(
+            const std::vector<const vk::Image *> &images,
+            VkMemoryPropertyFlags flags) -> vk::DeviceMemory * {
 
-        m_DeviceMemories.emplace_back(
-                std::make_unique<vk::DeviceMemory>(m_LogicalDevice.data(), findMemoryType(memRequirements, properties),
-                                                   memRequirements.size));
+        m_DeviceMemories.emplace_back(std::make_unique<vk::DeviceMemory>(
+                m_PhysicalDevice, m_LogicalDevice.data(), images, flags));
+
         return m_DeviceMemories.back().get();
     }
 
@@ -163,7 +164,8 @@ public:
             const vk::DescriptorPool &pool,
             const std::vector<VkDescriptorSetLayout> &layouts
     ) -> vk::DescriptorSets * {
-        m_DescriptorSets.emplace_back(std::make_unique<vk::DescriptorSets>(m_LogicalDevice.data(), pool.data(), layouts));
+        m_DescriptorSets.emplace_back(
+                std::make_unique<vk::DescriptorSets>(m_LogicalDevice.data(), pool.data(), layouts));
         return m_DescriptorSets.back().get();
     }
 
@@ -216,7 +218,8 @@ public:
             VkImageUsageFlags usage
     ) -> vk::Image * {
         m_Images.emplace_back(
-                std::make_unique<vk::Image>(m_LogicalDevice.data(), queueIndices, extent, mipLevels, samples, format, tiling,
+                std::make_unique<vk::Image>(m_LogicalDevice.data(), queueIndices, extent, mipLevels, samples, format,
+                                            tiling,
                                             usage));
         return m_Images.back().get();
     }
@@ -260,7 +263,7 @@ public:
         return m_Samplers.back().get();
     }
 
-    auto createShaderModule(const char* filepath) -> vk::ShaderModule* {
+    auto createShaderModule(const char *filepath) -> vk::ShaderModule * {
         m_ShaderModules.emplace_back(std::make_unique<vk::ShaderModule>(m_LogicalDevice.data(), filepath));
         return m_ShaderModules.back().get();
     }
@@ -274,7 +277,8 @@ public:
 
     auto
     createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding> &bindings) -> vk::DescriptorSetLayout * {
-        m_DescriptorSetLayouts.emplace_back(std::make_unique<vk::DescriptorSetLayout>(m_LogicalDevice.data(), bindings));
+        m_DescriptorSetLayouts.emplace_back(
+                std::make_unique<vk::DescriptorSetLayout>(m_LogicalDevice.data(), bindings));
         return m_DescriptorSetLayouts.back().get();
     }
 
@@ -317,9 +321,11 @@ public:
         return tmp;
     }
 
-    auto findMemoryType(const VkMemoryRequirements &requirements, VkMemoryPropertyFlags properties) const -> uint32_t;
+    auto getMemoryType(uint32_t typeBits, VkMemoryPropertyFlags flags) const -> uint32_t {
+        return findMemoryType(m_PhysicalDevice, typeBits, flags);
+    }
 
-    auto properties() const -> const VkPhysicalDeviceProperties& { return m_Properties; }
+    auto properties() const -> const VkPhysicalDeviceProperties & { return m_Properties; }
 
 private:
     auto pickPhysicalDevice() -> VkPhysicalDevice;
@@ -431,9 +437,9 @@ public:
         return *this;
     }
 
-    auto buffer() const -> const VkBuffer& { return m_Buffer->data(); }
+    auto buffer() const -> const VkBuffer & { return m_Buffer->data(); }
 
-    auto bufferPtr() const -> const VkBuffer* { return m_Buffer->ptr(); }
+    auto bufferPtr() const -> const VkBuffer * { return m_Buffer->ptr(); }
 
     auto data() const -> const vk::Buffer & { return *m_Buffer; }
 

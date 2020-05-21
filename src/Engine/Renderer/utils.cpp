@@ -293,7 +293,16 @@ auto hasStencilComponent(VkFormat format) -> bool {
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-auto roundUp(size_t number, size_t multiple) -> size_t {
-    assert(multiple && ((multiple & (multiple - 1)) == 0));
-    return (number + multiple - 1) & -multiple;
+auto findMemoryType(VkPhysicalDevice physDevice, uint32_t typeBits, VkMemoryPropertyFlags flags) -> uint32_t {
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(physDevice, &memProperties);
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        auto supportedFlags = memProperties.memoryTypes[i].propertyFlags;
+        if ((typeBits & (1UL << i)) && (supportedFlags & flags) == flags) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("failed to find suitable memory type!");
 }

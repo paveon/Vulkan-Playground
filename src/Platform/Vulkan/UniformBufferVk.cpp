@@ -22,7 +22,7 @@ UniformBufferVk::UniformBufferVk(size_t objectByteSize) :
 
     VkMemoryRequirements memRequirements;
     vkGetBufferMemoryRequirements(m_Device, m_Data.data(), &memRequirements);
-    auto memoryType = m_Device.findMemoryType(memRequirements, memoryFlags);
+    auto memoryType = m_Device.getMemoryType(memRequirements.memoryTypeBits, memoryFlags);
     m_Memory = vk::DeviceMemory(m_Device, memoryType, memRequirements.size);
     vkBindBufferMemory(m_Device, m_Data.data(), m_Memory.data(), 0);
 }

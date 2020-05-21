@@ -16,7 +16,6 @@
 #include "Platform/Vulkan/GraphicsContextVk.h"
 #include "RenderPass.h"
 #include "Pipeline.h"
-#include "Texture.h"
 
 
 struct UniformBufferObject {
@@ -67,15 +66,13 @@ private:
 
     vk::CommandPool* m_GfxCmdPool;
     vk::CommandPool* m_TransferCmdPool;
-    vk::CommandBuffers* m_GraphicsCmdBuffers;
+    vk::CommandBuffers* m_GfxCmdBuffers;
     vk::CommandBuffers* m_TransferCmdBuffers;
 
+    vk::DeviceMemory* m_ImageMemory;
     vk::Image* m_ColorImage;
-    vk::DeviceMemory* m_ColorImageMemory;
-    vk::ImageView* m_ColorImageView;
-
     vk::Image* m_DepthImage;
-    vk::DeviceMemory* m_DepthImageMemory;
+    vk::ImageView* m_ColorImageView;
     vk::ImageView* m_DepthImageView;
 
     std::vector<vk::Framebuffer*> m_Framebuffers;
