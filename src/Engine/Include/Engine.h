@@ -14,5 +14,6 @@
 #include <Engine/Renderer/VertexBuffer.h>
 #include <Engine/Renderer/IndexBuffer.h>
 #include <Engine/Renderer/UniformBuffer.h>
+#include <Engine/Renderer/Camera.h>
 
 #endif //VULKAN_ENGINE_H

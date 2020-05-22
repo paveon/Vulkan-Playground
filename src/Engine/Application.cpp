@@ -55,8 +55,8 @@ void Application::Run() {
                 auto drawEnd = TIME_NOW;
                 auto drawTime = std::chrono::duration_cast<std::chrono::milliseconds>(
                         drawEnd - drawStart);
-                if (drawTime < frameTiming)
-                    std::this_thread::sleep_for(frameTiming - drawTime);
+//                if (drawTime < frameTiming)
+//                    std::this_thread::sleep_for(frameTiming - drawTime);
             }
         } catch (const std::exception &e) {
             std::cerr << e.what() << std::endl;

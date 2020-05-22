@@ -4,6 +4,12 @@
 #include <fstream>
 #include <Engine/Include/Engine.h>
 
+struct UniformBufferObject {
+    alignas(16) math::mat4 model;
+    alignas(16) math::mat4 view;
+    alignas(16) math::mat4 proj;
+};
+
 class TestLayer : public Layer {
     const char *MODEL_PATH = BASE_DIR "/models/chalet.obj";
     const char *TEXTURE_PATH = BASE_DIR "/textures/chalet.jpg";
@@ -11,7 +17,7 @@ class TestLayer : public Layer {
     const char *vertShaderPath = "shaders/triangle.vert.spv";
     const char *fragShaderPath = "shaders/triangle.frag.spv";
 
-    Renderer& m_Renderer;
+    Renderer &m_Renderer;
 
     vk::CommandBuffers m_CmdBuffers;
 
@@ -27,20 +33,28 @@ class TestLayer : public Layer {
     VkRenderPassBeginInfo m_RenderPassBeginInfo = {};
     UniformBufferObject m_UBO = {};
 
+    PerspectiveCamera m_Camera;
+
 public:
-    explicit TestLayer(const char *name, Renderer& renderer) : Layer(name), m_Renderer(renderer) {
-        math::vec3 cameraPos(2.0f, 2.0f, 2.0f);
-        math::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
-        math::vec3 upVector(0.0f, 0.0f, 1.0f);
-        m_UBO.view = math::lookAt(cameraPos, cameraTarget, upVector);
+    explicit TestLayer(const char *name, Renderer &renderer) : Layer(name), m_Renderer(renderer) {
+        auto[width, height] = m_Renderer.FramebufferSize();
+        m_Camera = PerspectiveCamera(
+                math::vec3(0.0f, 3.0f, 0.0f),
+                math::vec3(0.0f, -1.0f, 0.0f),
+                width / (float) height,
+                0.1f, 10.0f, math::radians(45.0f));
+
+        m_UBO.proj = m_Camera.GetProjection();
+        m_UBO.view = m_Camera.GetView();
+        m_UBO.model = math::mat4(1.0f);
 
         m_RenderPass = RenderPass::Create();
     }
 
     void OnAttach() override {
         Layer::OnAttach();
-        auto& ctx = static_cast<GfxContextVk&>(Application::GetGraphicsContext());
-        auto& device = ctx.GetDevice();
+        auto &ctx = static_cast<GfxContextVk &>(Application::GetGraphicsContext());
+        auto &device = ctx.GetDevice();
 
         m_CmdBuffers = vk::CommandBuffers(device, device.GfxPool()->data(), ctx.Swapchain().ImageCount());
 
@@ -80,9 +94,9 @@ public:
         Layer::OnDetach();
     }
 
-    auto OnWindowResize(WindowResizeEvent&) -> bool override {
-        auto& ctx = static_cast<GfxContextVk&>(Application::GetGraphicsContext());
-        auto& device = ctx.GetDevice();
+    auto OnWindowResize(WindowResizeEvent &e) -> bool override {
+        auto &ctx = static_cast<GfxContextVk &>(Application::GetGraphicsContext());
+        auto &device = ctx.GetDevice();
 
         m_RenderPass = RenderPass::Create();
 
@@ -92,36 +106,76 @@ public:
         m_GraphicsPipeline->Recreate(*m_RenderPass);
         m_GraphicsPipeline->BindUniformBuffer(*m_UniformBuffer, 0);
         m_GraphicsPipeline->BindTexture(*m_Texture, 1);
+
+        m_Camera.SetAspectRatio(e.Width() / (float) e.Height());
+        m_UBO.proj = m_Camera.GetProjection();
         return true;
     }
 
     auto OnKeyPress(KeyPressEvent &e) -> bool override {
-        if (e.RepeatCount() < 1) std::cout << m_DebugName << "::" << e << std::endl;
+//        if (e.RepeatCount() < 1) std::cout << m_DebugName << "::" << e << std::endl;
         return true;
     }
 
     auto OnKeyRelease(KeyReleaseEvent &e) -> bool override {
-        std::cout << m_DebugName << "::" << e << std::endl;
+//        std::cout << m_DebugName << "::" << e << std::endl;
+        return true;
+    }
+
+    auto OnMouseMove(MouseMoveEvent& e) -> bool override {
         return true;
     }
 
     void OnUpdate(uint32_t imageIndex) override {
+        static const float mouseSensitivity = 0.002f;
         static auto startTime = TIME_NOW;
+        static auto lastMousePos = Input::MousePos();
 
         auto currentTime = TIME_NOW;
         float time = std::chrono::duration<float, std::chrono::seconds::period>(
                 currentTime - startTime).count();
 
-        m_UBO.model = math::rotate(math::mat4(1.0f), time * math::radians(15.0f), math::vec3(0.0f, 0.0f, 1.0f));
+        auto mousePos = Input::MousePos();
 
-        auto[width, height] = Application::GetGraphicsContext().FramebufferSize();
+        if (mousePos != lastMousePos) {
+            float deltaX = (lastMousePos.first - mousePos.first) * mouseSensitivity;
+            float deltaY = (lastMousePos.second - mousePos.second) * mouseSensitivity;
+            m_Camera.ChangeYawPitch(deltaX, deltaY);
+            m_UBO.view = m_Camera.GetView();
+            lastMousePos = mousePos;
+        }
 
-        float verticalFov = math::radians(45.0f);
-        float aspectRatio = width / (float) height;
-        float nearPlane = 0.1f;
-        float farPlane = 10.0f;
-        m_UBO.proj = math::perspective(verticalFov, aspectRatio, nearPlane, farPlane);
-        m_UBO.proj[1][1] *= -1;
+        if (Input::KeyPressed(IO_KEY_E)) {
+            m_Camera.MoveZ(0.1f);
+            m_UBO.view = m_Camera.GetView();
+        }
+        else if (Input::KeyPressed(IO_KEY_Q)) {
+            m_Camera.MoveZ(-0.1f);
+            m_UBO.view = m_Camera.GetView();
+        }
+
+        if (Input::KeyPressed(IO_KEY_W)) {
+            m_Camera.MoveInDirection(0.1f);
+            m_UBO.view = m_Camera.GetView();
+        }
+        else if (Input::KeyPressed(IO_KEY_S)) {
+            m_Camera.MoveInDirection(-0.1f);
+            m_UBO.view = m_Camera.GetView();
+        }
+
+        if (Input::KeyPressed(IO_KEY_A)) {
+            m_Camera.MoveSideways(-0.1f);
+            m_UBO.view = m_Camera.GetView();
+        }
+        else if (Input::KeyPressed(IO_KEY_D)) {
+            m_Camera.MoveSideways(0.1f);
+            m_UBO.view = m_Camera.GetView();
+        }
+
+
+//        m_UBO.model = math::rotate(math::mat4(1.0f), time * math::radians(15.0f), math::vec3(0.0f, 0.0f, 1.0f));
+
+//        auto[width, height] = Application::GetGraphicsContext().FramebufferSize();
 
         m_UniformBuffer->SetData(imageIndex, &m_UBO);
     }

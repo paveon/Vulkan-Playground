@@ -11,7 +11,6 @@
 
 
 #define TIME_NOW std::chrono::steady_clock::now()
-#define CLAMP(lower_bound, value, upper_bound) std::max((lower_bound), std::min((upper_bound), (value)))
 
 void InitializeGLFW();
 

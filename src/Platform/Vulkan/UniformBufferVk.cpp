@@ -15,16 +15,16 @@ UniformBufferVk::UniformBufferVk(size_t objectByteSize) :
                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
 
-    m_Data = vk::Buffer(m_Device,
+    m_Buffer = vk::Buffer(m_Device,
                         {m_Device.queueIndex(QueueFamily::GRAPHICS)},
                         m_BufferSize,
                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 
     VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(m_Device, m_Data.data(), &memRequirements);
+    vkGetBufferMemoryRequirements(m_Device, m_Buffer.data(), &memRequirements);
     auto memoryType = m_Device.getMemoryType(memRequirements.memoryTypeBits, memoryFlags);
     m_Memory = vk::DeviceMemory(m_Device, memoryType, memRequirements.size);
-    vkBindBufferMemory(m_Device, m_Data.data(), m_Memory.data(), 0);
+    m_Buffer.BindMemory(m_Memory.data(), 0);
 }
 
 void UniformBufferVk::SetData(uint32_t imageIndex, const void *data) {

@@ -18,13 +18,6 @@
 #include "Pipeline.h"
 
 
-struct UniformBufferObject {
-    alignas(16) math::mat4 model;
-    alignas(16) math::mat4 view;
-    alignas(16) math::mat4 proj;
-};
-
-
 enum class GraphicsAPI {
     VULKAN = 0
 };
