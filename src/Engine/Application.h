@@ -12,6 +12,7 @@
 #include "Events/KeyEvents.h"
 #include "Window.h"
 #include "LayerStack.h"
+#include "Timestep.h"
 
 class Application {
 private:
@@ -26,28 +27,29 @@ private:
 
     LayerStack m_LayerStack;
     bool m_Running = false;
+    std::chrono::steady_clock::time_point m_LastFrameTime;
 
     void Init();
 
     void OnEvent(std::unique_ptr<Event> e);
 
-    auto OnWindowClose(WindowCloseEvent &e) -> bool;
+    void OnWindowClose(WindowCloseEvent &e);
 
-    auto OnWindowResize(WindowResizeEvent &e) -> bool;
+    void OnWindowResize(WindowResizeEvent &e);
 
-    auto OnMouseButtonPress(MouseButtonPressEvent &) -> bool { return true; }
+    void OnMouseButtonPress(MouseButtonPressEvent &) {}
 
-    auto OnMouseButtonRelease(MouseButtonReleaseEvent &) -> bool { return true; }
+    void OnMouseButtonRelease(MouseButtonReleaseEvent &) {}
 
-    auto OnMouseScroll(MouseScrollEvent &) -> bool { return true; }
+    void OnMouseScroll(MouseScrollEvent &) {}
 
-    auto OnKeyPress(KeyPressEvent &) -> bool { return true; }
+    void OnKeyPress(KeyPressEvent &) {}
 
-    auto OnKeyRelease(KeyReleaseEvent &) -> bool { return true; }
+    void OnKeyRelease(KeyReleaseEvent &) {}
 
-    auto OnMouseMove(MouseMoveEvent &) -> bool { return true; }
+    void OnMouseMove(MouseMoveEvent &) {}
 
-    auto OnCharacterPress(CharacterPressEvent &) -> bool { return true; }
+    void OnCharacterPress(CharacterPressEvent &) {}
 
     void ProcessEventQueue();
 

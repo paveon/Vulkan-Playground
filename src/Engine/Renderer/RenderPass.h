@@ -12,7 +12,7 @@ protected:
 public:
    virtual ~RenderPass() = default;
 
-   static std::unique_ptr<RenderPass> Create();
+   static auto Create() -> std::unique_ptr<RenderPass>;
 
    virtual auto VkHandle() const -> const void* { return nullptr; }
 };

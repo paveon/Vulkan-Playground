@@ -9,7 +9,7 @@ protected:
    ShaderProgram() = default;
 
 public:
-   static std::unique_ptr<ShaderProgram> Create(const char* filepath);
+   static auto Create(const char* filepath) -> std::unique_ptr<ShaderProgram>;
 };
 
 

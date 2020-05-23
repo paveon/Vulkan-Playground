@@ -7,6 +7,7 @@
 #include "Events/WindowEvents.h"
 #include "Events/MouseEvents.h"
 #include "Events/KeyEvents.h"
+#include "Timestep.h"
 
 class Layer {
 protected:
@@ -18,8 +19,8 @@ public:
 
     virtual void OnAttach() { std::cout << "[Application] " << m_DebugName << "::Attached" << std::endl; }
     virtual void OnDetach() { std::cout << "[Application] " << m_DebugName << "::Detached" << std::endl; }
-    virtual void OnUpdate(uint32_t) {}
-    virtual auto OnDraw(uint32_t) -> VkCommandBuffer { return nullptr; };
+    virtual void OnUpdate(Timestep ts, uint32_t imageIndex) = 0;
+    virtual auto OnDraw(uint32_t imageIndex, const VkCommandBufferInheritanceInfo &info) -> VkCommandBuffer = 0;
 
     virtual void OnEvent(Event&) {}
     virtual auto OnWindowResize(WindowResizeEvent&) -> bool { return true; }

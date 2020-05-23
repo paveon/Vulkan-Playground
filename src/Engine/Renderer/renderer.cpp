@@ -38,7 +38,7 @@ Renderer::Renderer(GfxContextVk &ctx) : m_Context(ctx), m_Device(ctx.GetDevice()
             m_Device.queueIndex(QueueFamily::GRAPHICS),
     };
 
-    VkExtent2D maxExtent{1920, 1080 }; // Temporary hack
+    VkExtent2D maxExtent{1920, 1080}; // Temporary hack
 
     m_ColorImage = m_Device.createImage(
             {m_Device.queueIndex(QueueFamily::GRAPHICS)},
@@ -147,14 +147,43 @@ auto Renderer::AcquireNextImage() -> uint32_t {
 }
 
 void Renderer::DrawFrame(std::vector<VkCommandBuffer> &submitBuffers) {
+    vk::CommandBuffer primaryCmdBuffer(m_GfxCmdBuffers->get(m_ImageIndex));
+
+    VkClearColorValue colorClear = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    std::array<VkClearValue, 2> clearValues = {};
+    clearValues[0].color = colorClear;
+    clearValues[1].depthStencil = {1.0f, 0};
+
+    auto *currentFramebuffer = m_Framebuffers[m_ImageIndex]->data();
+    VkRenderPassBeginInfo renderPassBeginInfo = {};
+    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass->VkHandle();
+    renderPassBeginInfo.renderArea.offset = {0, 0};
+    renderPassBeginInfo.clearValueCount = clearValues.size();
+    renderPassBeginInfo.pClearValues = clearValues.data();
+    renderPassBeginInfo.renderArea.extent = m_Context.Swapchain().Extent();
+    renderPassBeginInfo.framebuffer = currentFramebuffer;
+
+    primaryCmdBuffer.Begin();
+
+    // The primary command buffer does not contain any rendering commands
+    // These are stored (and retrieved) from the secondary command buffers
+    vkCmdBeginRenderPass(primaryCmdBuffer.data(), &renderPassBeginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+    vkCmdExecuteCommands(primaryCmdBuffer.data(), submitBuffers.size(), submitBuffers.data());
+
+    vkCmdEndRenderPass(primaryCmdBuffer.data());
+
+    primaryCmdBuffer.End();
+
     VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = m_AcquireSemaphores[m_FrameIndex]->ptr();
     submitInfo.pWaitDstStageMask = &waitStages;
-    submitInfo.commandBufferCount = submitBuffers.size();
-    submitInfo.pCommandBuffers = submitBuffers.data();
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = primaryCmdBuffer.ptr();
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = m_ReleaseSemaphores[m_FrameIndex]->ptr();
 

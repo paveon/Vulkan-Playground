@@ -17,8 +17,8 @@ WindowLinux::WindowLinux(uint32_t width, uint32_t height, const char* title) {
    m_Context->Init();
 
    glfwSetWindowUserPointer(m_Window, this);
-   glfwSetInputMode(m_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-   //glfwSetFramebufferSizeCallback(m_Window, WindowLinux::ResizeCallback);
+//   glfwSetInputMode(m_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+//   glfwSetFramebufferSizeCallback(m_Window, WindowLinux::ResizeCallback);
 
    glfwSetWindowSizeCallback(m_Window, [](GLFWwindow* window, int newWidth, int newHeight) {
        auto *windowLinux = static_cast<WindowLinux*>(glfwGetWindowUserPointer(window));
@@ -53,7 +53,7 @@ WindowLinux::WindowLinux(uint32_t width, uint32_t height, const char* title) {
    });
 
    glfwSetMouseButtonCallback(m_Window, [](GLFWwindow* window, int button, int action, int) {
-       auto windowLinux = static_cast<WindowLinux*>(glfwGetWindowUserPointer(window));
+       auto *windowLinux = static_cast<WindowLinux*>(glfwGetWindowUserPointer(window));
        switch (action) {
           case GLFW_PRESS:
              windowLinux->m_EventCallback(std::make_unique<MouseButtonPressEvent>(button));

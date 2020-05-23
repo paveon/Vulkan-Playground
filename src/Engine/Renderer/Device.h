@@ -17,15 +17,15 @@ class Device {
 private:
     const vk::Instance *m_Instance{};
     const vk::Surface *m_Surface{};
-    VkPhysicalDevice m_PhysicalDevice = nullptr;
+    VkPhysicalDevice m_PhysicalDevice{};
     vk::LogicalDevice m_LogicalDevice;
     VkSampleCountFlagBits m_MsaaSamples = VK_SAMPLE_COUNT_1_BIT;
     VkPhysicalDeviceProperties m_Properties = {};
 
     std::unique_ptr<vk::Swapchain> m_Swapchain;
 
-    vk::CommandPool *m_GfxCmdPool;
-    vk::CommandPool *m_TransferCmdPool;
+    vk::CommandPool *m_GfxCmdPool{};
+    vk::CommandPool *m_TransferCmdPool{};
 
     std::vector<std::unique_ptr<vk::Pipeline>> m_Pipelines;
     std::vector<std::unique_ptr<vk::PipelineLayout>> m_PipelineLayouts;
@@ -179,23 +179,40 @@ public:
         return m_DescriptorPools.back().get();
     }
 
-    auto createCommandBuffers(uint32_t count) -> vk::CommandBuffers * {
+    auto createCommandBuffers(VkCommandBufferLevel level, uint32_t count) -> vk::CommandBuffers * {
         m_CmdBuffers.emplace_back(
-                std::make_unique<vk::CommandBuffers>(m_LogicalDevice.data(), m_GfxCmdPool->data(), count));
+                std::make_unique<vk::CommandBuffers>(m_LogicalDevice.data(),
+                                                     m_GfxCmdPool->data(),
+                                                     level,
+                                                     count));
         return m_CmdBuffers.back().get();
+    }
+
+    auto createCommandBuffers(uint32_t count) -> vk::CommandBuffers * {
+        return createCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, count);
     }
 
     auto createCommandBuffers() -> vk::CommandBuffers * {
-        return createCommandBuffers(1);
+        return createCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
     }
 
-    auto createCommandBuffers(const vk::CommandPool &pool, uint32_t count) -> vk::CommandBuffers * {
-        m_CmdBuffers.emplace_back(std::make_unique<vk::CommandBuffers>(m_LogicalDevice.data(), pool.data(), count));
+    auto createCommandBuffers(const vk::CommandPool &pool,
+                              VkCommandBufferLevel level,
+                              uint32_t count) -> vk::CommandBuffers * {
+        m_CmdBuffers.emplace_back(std::make_unique<vk::CommandBuffers>(m_LogicalDevice.data(),
+                                                                       pool.data(),
+                                                                       level,
+                                                                       count));
+
         return m_CmdBuffers.back().get();
     }
 
+    auto createCommandBuffers(const vk::CommandPool &pool, uint32_t count) -> vk::CommandBuffers * {
+        return createCommandBuffers(pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, count);
+    }
+
     auto createCommandBuffers(const vk::CommandPool &pool) -> vk::CommandBuffers * {
-        return createCommandBuffers(pool, 1);
+        return createCommandBuffers(pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
     }
 
     auto createSemaphore() -> vk::Semaphore * {
@@ -231,8 +248,9 @@ public:
 
     auto createTextureImage(const std::set<uint32_t> &queueIndices, const Texture2D &texture) -> vk::Image * {
         VkFormat imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
-        VkImageUsageFlags usageFlags =
-                VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                       VK_IMAGE_USAGE_SAMPLED_BIT;
         VkImageTiling tilingMode = VK_IMAGE_TILING_OPTIMAL;
         return createImage(queueIndices, {texture.Width(), texture.Height()}, texture.MipLevels(),
                            VK_SAMPLE_COUNT_1_BIT, imageFormat, tilingMode, usageFlags);

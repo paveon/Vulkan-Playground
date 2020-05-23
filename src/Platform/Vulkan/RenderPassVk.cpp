@@ -5,17 +5,16 @@
 
 
 RenderPassVk::~RenderPassVk() {
-
-    const auto &device = static_cast<GfxContextVk &>(Application::GetGraphicsContext()).GetDevice();
-    if (m_RenderPass) vkDestroyRenderPass(device, m_RenderPass, nullptr);
+    if (m_RenderPass) vkDestroyRenderPass(m_Device, m_RenderPass, nullptr);
 }
 
 
-RenderPassVk::RenderPassVk() {
-    auto &gfxContext = static_cast<GfxContextVk &>(Application::GetGraphicsContext());
-    const Device &device = gfxContext.GetDevice();
-    auto sampleCount = device.maxSamples();
-    auto imageFormat = gfxContext.Swapchain().ImageFormat();
+RenderPassVk::RenderPassVk() :
+        m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
+        m_Device(m_Context.GetDevice()) {
+
+    auto sampleCount = Device::maxSamples();
+    auto imageFormat = m_Context.Swapchain().ImageFormat();
 
     VkSubpassDescription subpass = {};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -36,7 +35,7 @@ RenderPassVk::RenderPassVk() {
 //    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentDescription &depthAttachment(attachments[1]);
-    depthAttachment.format = device.findDepthFormat();
+    depthAttachment.format = m_Device.findDepthFormat();
     depthAttachment.samples = sampleCount;
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -105,6 +104,6 @@ RenderPassVk::RenderPassVk() {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &m_RenderPass) != VK_SUCCESS)
+    if (vkCreateRenderPass(m_Device, &renderPassInfo, nullptr, &m_RenderPass) != VK_SUCCESS)
         throw std::runtime_error("failed to create render pass!");
 }

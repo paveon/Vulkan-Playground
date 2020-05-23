@@ -30,8 +30,7 @@ protected:
             m_Up(0.0f, 0.0f, 1.0f),
             m_Right(math::normalize(math::cross(m_Direction, m_Up))),
             m_Yaw(std::atan2(m_Direction.y, m_Direction.x)) {
-
-        std::cout << m_Yaw << std::endl;
+        
         m_Projection[1][1] *= -1;
     };
 

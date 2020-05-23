@@ -17,6 +17,8 @@ class TestLayer : public Layer {
     const char *vertShaderPath = "shaders/triangle.vert.spv";
     const char *fragShaderPath = "shaders/triangle.frag.spv";
 
+    GfxContextVk &m_Context;
+    Device &m_Device;
     Renderer &m_Renderer;
 
     vk::CommandBuffers m_CmdBuffers;
@@ -35,8 +37,16 @@ class TestLayer : public Layer {
 
     PerspectiveCamera m_Camera;
 
+    float m_MouseSensitivity = 0.1f;
+    float m_MoveSpeed = 3.0f;
+
 public:
-    explicit TestLayer(const char *name, Renderer &renderer) : Layer(name), m_Renderer(renderer) {
+    explicit TestLayer(const char *name, Renderer &renderer) :
+            Layer(name),
+            m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
+            m_Device(m_Context.GetDevice()),
+            m_Renderer(renderer) {
+
         auto[width, height] = m_Renderer.FramebufferSize();
         m_Camera = PerspectiveCamera(
                 math::vec3(0.0f, 3.0f, 0.0f),
@@ -53,10 +63,11 @@ public:
 
     void OnAttach() override {
         Layer::OnAttach();
-        auto &ctx = static_cast<GfxContextVk &>(Application::GetGraphicsContext());
-        auto &device = ctx.GetDevice();
 
-        m_CmdBuffers = vk::CommandBuffers(device, device.GfxPool()->data(), ctx.Swapchain().ImageCount());
+        m_CmdBuffers = vk::CommandBuffers(m_Device,
+                                          m_Device.GfxPool()->data(),
+                                          VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+                                          m_Context.Swapchain().ImageCount());
 
         std::unique_ptr<ShaderProgram> fragShader(ShaderProgram::Create(fragShaderPath));
         std::unique_ptr<ShaderProgram> vertexShader(ShaderProgram::Create(vertShaderPath));
@@ -95,12 +106,13 @@ public:
     }
 
     auto OnWindowResize(WindowResizeEvent &e) -> bool override {
-        auto &ctx = static_cast<GfxContextVk &>(Application::GetGraphicsContext());
-        auto &device = ctx.GetDevice();
-
         m_RenderPass = RenderPass::Create();
 
-        m_CmdBuffers = vk::CommandBuffers(device, device.GfxPool()->data(), ctx.Swapchain().ImageCount());
+        m_CmdBuffers = vk::CommandBuffers(m_Device,
+                                          m_Device.GfxPool()->data(),
+                                          VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+                                          m_Context.Swapchain().ImageCount());
+
         m_UniformBuffer = UniformBuffer::Create(sizeof(UniformBufferObject));
 
         m_GraphicsPipeline->Recreate(*m_RenderPass);
@@ -112,63 +124,57 @@ public:
         return true;
     }
 
-    auto OnKeyPress(KeyPressEvent &e) -> bool override {
+    auto OnKeyPress(KeyPressEvent &) -> bool override {
 //        if (e.RepeatCount() < 1) std::cout << m_DebugName << "::" << e << std::endl;
         return true;
     }
 
-    auto OnKeyRelease(KeyReleaseEvent &e) -> bool override {
+    auto OnKeyRelease(KeyReleaseEvent &) -> bool override {
 //        std::cout << m_DebugName << "::" << e << std::endl;
         return true;
     }
 
-    auto OnMouseMove(MouseMoveEvent& e) -> bool override {
+    auto OnMouseMove(MouseMoveEvent &) -> bool override {
         return true;
     }
 
-    void OnUpdate(uint32_t imageIndex) override {
-        static const float mouseSensitivity = 0.002f;
-        static auto startTime = TIME_NOW;
+    void OnUpdate(Timestep ts, uint32_t imageIndex) override {
         static auto lastMousePos = Input::MousePos();
-
-        auto currentTime = TIME_NOW;
-        float time = std::chrono::duration<float, std::chrono::seconds::period>(
-                currentTime - startTime).count();
 
         auto mousePos = Input::MousePos();
 
         if (mousePos != lastMousePos) {
-            float deltaX = (lastMousePos.first - mousePos.first) * mouseSensitivity;
-            float deltaY = (lastMousePos.second - mousePos.second) * mouseSensitivity;
-            m_Camera.ChangeYawPitch(deltaX, deltaY);
-            m_UBO.view = m_Camera.GetView();
+            if (Input::MouseButtonPressed(IO_MOUSE_BUTTON_RIGHT)) {
+                float deltaX = (lastMousePos.first - mousePos.first) * m_MouseSensitivity * ts;
+                float deltaY = (lastMousePos.second - mousePos.second) * m_MouseSensitivity * ts;
+                m_Camera.ChangeYawPitch(deltaX, deltaY);
+                m_UBO.view = m_Camera.GetView();
+            }
             lastMousePos = mousePos;
         }
 
+
         if (Input::KeyPressed(IO_KEY_E)) {
-            m_Camera.MoveZ(0.1f);
+            m_Camera.MoveZ(m_MoveSpeed * ts);
             m_UBO.view = m_Camera.GetView();
-        }
-        else if (Input::KeyPressed(IO_KEY_Q)) {
-            m_Camera.MoveZ(-0.1f);
+        } else if (Input::KeyPressed(IO_KEY_Q)) {
+            m_Camera.MoveZ(-m_MoveSpeed * ts);
             m_UBO.view = m_Camera.GetView();
         }
 
         if (Input::KeyPressed(IO_KEY_W)) {
-            m_Camera.MoveInDirection(0.1f);
+            m_Camera.MoveInDirection(m_MoveSpeed * ts);
             m_UBO.view = m_Camera.GetView();
-        }
-        else if (Input::KeyPressed(IO_KEY_S)) {
-            m_Camera.MoveInDirection(-0.1f);
+        } else if (Input::KeyPressed(IO_KEY_S)) {
+            m_Camera.MoveInDirection(-m_MoveSpeed * ts);
             m_UBO.view = m_Camera.GetView();
         }
 
         if (Input::KeyPressed(IO_KEY_A)) {
-            m_Camera.MoveSideways(-0.1f);
+            m_Camera.MoveSideways(-m_MoveSpeed * ts);
             m_UBO.view = m_Camera.GetView();
-        }
-        else if (Input::KeyPressed(IO_KEY_D)) {
-            m_Camera.MoveSideways(0.1f);
+        } else if (Input::KeyPressed(IO_KEY_D)) {
+            m_Camera.MoveSideways(m_MoveSpeed * ts);
             m_UBO.view = m_Camera.GetView();
         }
 
@@ -180,7 +186,7 @@ public:
         m_UniformBuffer->SetData(imageIndex, &m_UBO);
     }
 
-    auto OnDraw(uint32_t imageIndex) -> VkCommandBuffer override {
+    auto OnDraw(uint32_t imageIndex, const VkCommandBufferInheritanceInfo &info) -> VkCommandBuffer override {
         auto[width, height] = Application::GetGraphicsContext().FramebufferSize();
         VkExtent2D extent{width, height};
 
@@ -196,28 +202,28 @@ public:
         scissor.offset = {0, 0};
         scissor.extent = extent;
 
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-        beginInfo.pInheritanceInfo = nullptr; // Optional
-
         VkClearColorValue colorClear = {{0.0f, 0.0f, 0.0f, 1.0f}};
         std::array<VkClearValue, 2> clearValues = {};
         clearValues[0].color = colorClear;
         clearValues[1].depthStencil = {1.0f, 0};
 
-        m_RenderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        m_RenderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass->VkHandle();
-        m_RenderPassBeginInfo.renderArea.offset = {0, 0};
-        m_RenderPassBeginInfo.clearValueCount = clearValues.size();
-        m_RenderPassBeginInfo.pClearValues = clearValues.data();
-        m_RenderPassBeginInfo.renderArea.extent = extent;
-        m_RenderPassBeginInfo.framebuffer = m_Renderer.GetFramebuffer().data();
+//        m_RenderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+//        m_RenderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass->VkHandle();
+//        m_RenderPassBeginInfo.renderArea.offset = {0, 0};
+//        m_RenderPassBeginInfo.clearValueCount = clearValues.size();
+//        m_RenderPassBeginInfo.pClearValues = clearValues.data();
+//        m_RenderPassBeginInfo.renderArea.extent = extent;
+//        m_RenderPassBeginInfo.framebuffer = m_Renderer.GetFramebuffer().data();
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        beginInfo.pInheritanceInfo = &info;
 
         vk::CommandBuffer cmdBuffer(m_CmdBuffers[imageIndex]);
-        cmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
+        cmdBuffer.Begin(beginInfo);
 
-        vkCmdBeginRenderPass(cmdBuffer.data(), &m_RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+//        vkCmdBeginRenderPass(cmdBuffer.data(), &m_RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdSetViewport(cmdBuffer.data(), 0, 1, &viewport);
         vkCmdSetScissor(cmdBuffer.data(), 0, 1, &scissor);
@@ -229,7 +235,7 @@ public:
 
         vkCmdDrawIndexed(cmdBuffer.data(), m_Model->IndexCount(), 1, 0, 0, 0);
 
-        vkCmdEndRenderPass(cmdBuffer.data());
+//        vkCmdEndRenderPass(cmdBuffer.data());
 
         cmdBuffer.End();
 
@@ -242,18 +248,18 @@ class SandboxApp : public Application {
 public:
     SandboxApp() : Application("Sandbox Application") {
         PushLayer(std::make_unique<TestLayer>("TestLayer", *m_Renderer));
-//       ImGuiLayer* imGui = static_cast<ImGuiLayer*>(PushOverlay(std::make_unique<ImGuiLayer>(*m_Renderer)));
+        ImGuiLayer *imGui = static_cast<ImGuiLayer *>(PushOverlay(ImGuiLayer::Create(*m_Renderer)));
 
-//       imGui->SetDrawCallback([](){
-//           ImGui::Begin("Test window");
-//           static float rotation = 0.0;
-//           ImGui::SliderFloat("rotation", &rotation, 0.0f, 360.0f);
-//           static float translation[] = {0.0, 0.0};
-//           ImGui::SliderFloat2("position", translation, -1.0, 1.0);
-//           static float color[4] = { 1.0f,1.0f,1.0f,1.0f };
-//           ImGui::ColorEdit3("color", color);
-//           ImGui::End();
-//       });
+        imGui->SetDrawCallback([]() {
+            ImGui::Begin("Test window");
+            static float rotation = 0.0;
+            ImGui::SliderFloat("rotation", &rotation, 0.0f, 360.0f);
+            static float translation[] = {0.0, 0.0};
+            ImGui::SliderFloat2("position", translation, -1.0, 1.0);
+            static float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+            ImGui::ColorEdit3("color", color);
+            ImGui::End();
+        });
     }
 
     ~SandboxApp() override = default;

@@ -60,14 +60,17 @@ public:
         }
     }
 
-    void UpdateLayers(uint32_t imageIndex) {
+    void UpdateLayers(Timestep ts, uint32_t imageIndex) {
         for (const auto &layer : m_Layers)
-            layer->OnUpdate(imageIndex);
+            layer->OnUpdate(ts, imageIndex);
     }
 
-    void DrawLayers(uint32_t imageIndex, std::vector<VkCommandBuffer> &outBuffers) {
+    void DrawLayers(uint32_t imageIndex,
+                    std::vector<VkCommandBuffer> &outBuffers,
+                    const VkCommandBufferInheritanceInfo &info) {
+
         for (const auto &layer : m_Layers) {
-            if (auto* buffer = layer->OnDraw(imageIndex); buffer)
+            if (auto *buffer = layer->OnDraw(imageIndex, info); buffer)
                 outBuffers.push_back(buffer);
         }
     }

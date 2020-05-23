@@ -35,26 +35,36 @@ void Application::Run() {
     m_Running = true;
 
     std::thread renderThread([this]() {
-        std::chrono::milliseconds frameTiming(16);
+//        std::chrono::milliseconds frameTiming(16);
 
         std::vector<VkCommandBuffer> submitBuffers;
 
         try {
             while (m_Running) {
-                auto drawStart = TIME_NOW;
+                auto currentTime = TIME_NOW;
+                Timestep timestep(currentTime - m_LastFrameTime);
+                m_LastFrameTime = currentTime;
 
                 ProcessEventQueue();
 
                 submitBuffers.clear();
 
                 auto imageIndex = m_Renderer->AcquireNextImage();
-                m_LayerStack.UpdateLayers(imageIndex);
-                m_LayerStack.DrawLayers(imageIndex, submitBuffers);
+
+                // Inheritance info for the secondary command buffers
+                VkCommandBufferInheritanceInfo inheritanceInfo = {};
+                inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+                inheritanceInfo.renderPass = (VkRenderPass) m_Renderer->GetRenderPass().VkHandle();
+                inheritanceInfo.framebuffer = m_Renderer->GetFramebuffer().data();
+
+                m_LayerStack.UpdateLayers(timestep, imageIndex);
+                m_LayerStack.DrawLayers(imageIndex, submitBuffers, inheritanceInfo);
                 m_Renderer->DrawFrame(submitBuffers);
 
-                auto drawEnd = TIME_NOW;
-                auto drawTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        drawEnd - drawStart);
+//                auto drawEnd = TIME_NOW;
+//                auto drawTime = std::chrono::duration_cast<std::chrono::microseconds>(drawEnd - currentTime);
+//                double frameTime = drawTime.count() / 1000000.0;
+//                printf("Frametime: %f, FPS: %d\n", frameTime, (uint32_t)(1.0 / frameTime));
 //                if (drawTime < frameTiming)
 //                    std::this_thread::sleep_for(frameTiming - drawTime);
             }
@@ -74,16 +84,14 @@ void Application::OnEvent(std::unique_ptr<Event> e) {
         m_WindowEventQueue.push(std::move(e));
 }
 
-auto Application::OnWindowClose(WindowCloseEvent &) -> bool {
+void Application::OnWindowClose(WindowCloseEvent &) {
     std::cout << "[Application] Closing window..." << std::endl;
     m_Running = false;
-    return true;
 }
 
-auto Application::OnWindowResize(WindowResizeEvent &e) -> bool {
+void Application::OnWindowResize(WindowResizeEvent &e) {
     std::cout << "[Application] Resizing window [" << e.Width() << ", " << e.Height() << "]" << std::endl;
     m_Renderer->OnWindowResize(e);
-    return true;
 }
 
 void Application::ProcessEventQueue() {

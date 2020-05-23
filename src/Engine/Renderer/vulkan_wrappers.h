@@ -159,13 +159,17 @@ namespace vk {
 
         auto data() const noexcept -> const VkCommandBuffer & { return m_Buffer; }
 
+        void Begin(VkCommandBufferBeginInfo beginInfo) const {
+            if (vkBeginCommandBuffer(m_Buffer, &beginInfo) != VK_SUCCESS)
+                throw std::runtime_error("failed to begin command buffer recording!");
+        }
+
         void Begin(VkCommandBufferUsageFlags flags = 0) const {
             VkCommandBufferBeginInfo beginInfo = {};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             beginInfo.flags = flags;
 
-            if (vkBeginCommandBuffer(m_Buffer, &beginInfo) != VK_SUCCESS)
-                throw std::runtime_error("failed to begin command buffer recording!");
+            Begin(beginInfo);
         }
 
         void End() const {
@@ -212,13 +216,22 @@ namespace vk {
 
         CommandBuffers() = default;
 
-        CommandBuffers(VkDevice device, VkCommandPool pool) : CommandBuffers(device, pool, 1) {}
+        CommandBuffers(VkDevice device,
+                       VkCommandPool pool) : CommandBuffers(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1) {}
 
-        CommandBuffers(VkDevice device, VkCommandPool pool, uint32_t count) : m_Device(device), m_Pool(pool) {
+        CommandBuffers(VkDevice device,
+                       VkCommandPool pool,
+                       VkCommandBufferLevel level) : CommandBuffers(device, pool, level, 1) {}
+
+        CommandBuffers(VkDevice device,
+                       VkCommandPool pool,
+                       VkCommandBufferLevel level,
+                       uint32_t count) : m_Device(device), m_Pool(pool) {
             VkCommandBufferAllocateInfo allocInfo = {};
             allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             allocInfo.commandPool = m_Pool;
-            allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocInfo.level = level;
+//            allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocInfo.commandBufferCount = count;
 
             m_Buffers.resize(count);

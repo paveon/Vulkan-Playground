@@ -3,11 +3,15 @@
 
 
 #include <Engine/Renderer/RenderPass.h>
+#include "GraphicsContextVk.h"
 
 
 class RenderPassVk : public RenderPass {
 private:
     VkRenderPass m_RenderPass = nullptr;
+
+    GfxContextVk& m_Context;
+    Device& m_Device;
 
 public:
     RenderPassVk();

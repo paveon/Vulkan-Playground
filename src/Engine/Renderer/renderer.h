@@ -38,7 +38,7 @@ public:
 
     void RecreateSwapchain();
 
-    auto GetRenderPass() const -> RenderPass& { return *m_RenderPass; }
+    auto GetRenderPass() const -> const RenderPass& { return *m_RenderPass; }
 
     auto GetDevice() const -> Device& { return m_Device; }
 
