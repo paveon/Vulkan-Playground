@@ -769,7 +769,7 @@ namespace vk {
             return *this;
         };
 
-        auto Size() const -> VkDeviceSize { return m_Size; }
+        auto size() const -> VkDeviceSize { return m_Size; }
 
         auto ptr() const noexcept -> const VkBuffer * { return &m_Buffer; }
 
@@ -811,7 +811,7 @@ namespace vk {
         }
 
     public:
-        void *m_Mapping = nullptr;
+        void *m_Mapped = nullptr;
 
         ~DeviceMemory() { Release(); }
 
@@ -844,16 +844,16 @@ namespace vk {
         auto data() const noexcept -> const VkDeviceMemory & { return m_Memory; }
 
         void MapMemory(VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags = 0) {
-            m_Mapping = nullptr;
-            if (vkMapMemory(m_Device, m_Memory, offset, size, flags, &m_Mapping) != VK_SUCCESS) {
+            m_Mapped = nullptr;
+            if (vkMapMemory(m_Device, m_Memory, offset, size, flags, &m_Mapped) != VK_SUCCESS) {
                 throw std::runtime_error("failed to map device memory!");
             }
         }
 
         void UnmapMemory() {
-            if (m_Mapping) {
+            if (m_Mapped) {
                 vkUnmapMemory(m_Device, m_Memory);
-                m_Mapping = nullptr;
+                m_Mapped = nullptr;
             }
         }
 

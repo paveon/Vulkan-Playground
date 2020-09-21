@@ -3,6 +3,7 @@
 #include <Engine/Application.h>
 #include <examples/imgui_impl_vulkan.h>
 #include <examples/imgui_impl_glfw.h>
+#include "RendererVk.h"
 
 
 ImGuiLayerVk::~ImGuiLayerVk() {
@@ -38,10 +39,12 @@ void ImGuiLayerVk::InitResources() {
     };
 
     m_DescriptorPool = m_Device.createDescriptorPool(poolSizes, 1000 * poolSizes.size(),
-                                                   VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
+                                                     VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
 
     m_CmdPool = m_Device.createCommandPool(m_Device.GfxQueueIdx(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-    m_CmdBuffers = m_Device.createCommandBuffers(*m_CmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY, imgCount);
+    m_CmdBuffers = m_Device.createCommandBuffers(*m_CmdPool, imgCount);
+
+    m_RenderPass = (VkRenderPass)Renderer::GetRenderPass().VkHandle();
 
 //    auto extent = m_Context.Swapchain().Extent();
 //    const auto& imgViews = m_Context.Swapchain().ImageViews();
@@ -93,7 +96,7 @@ void ImGuiLayerVk::InitResources() {
 //    }
 
     // Setup Platform/Renderer bindings
-    auto* window = static_cast<GLFWwindow*>(Application::GetWindow().GetNativeHandle());
+    auto *window = static_cast<GLFWwindow *>(Application::GetWindow().GetNativeHandle());
     ImGui_ImplGlfw_InitForVulkan(window, true);
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = m_Context.Instance().data();
@@ -168,57 +171,72 @@ void ImGuiLayerVk::InitResources() {
 }
 
 
-// Starts a new imGui frame and sets up windows and ui elements
-auto ImGuiLayerVk::OnDraw(uint32_t imageIndex, const VkCommandBufferInheritanceInfo &info) -> VkCommandBuffer {
+void ImGuiLayerVk::NewFrame() {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-    m_DrawCallback();
+}
+
+void ImGuiLayerVk::EndFrame() {
     ImGui::ShowDemoWindow();
     ImGui::Render();
 
-    // Update and Render additional Platform Windows
     ImGuiIO &io = ImGui::GetIO();
-    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-    {
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
         ImGui::UpdatePlatformWindows();
         ImGui::RenderPlatformWindowsDefault();
     }
-
-    auto extent = m_Context.Swapchain().Extent();
-    VkViewport viewport = {};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor = {};
-    scissor.offset = {0, 0};
-    scissor.extent = extent;
-
-    vk::CommandBuffer cmdBuffer = m_CmdBuffers->get(imageIndex);
-    VkCommandBufferBeginInfo beginInfo = {};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-    beginInfo.pInheritanceInfo = &info;
-
-    cmdBuffer.Begin(beginInfo);
-
-    vkCmdSetViewport(cmdBuffer.data(), 0, 1, &viewport);
-    vkCmdSetScissor(cmdBuffer.data(), 0, 1, &scissor);
-
-    // Record Imgui Draw Data and draw funcs into command buffer
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmdBuffer.data());
-
-    // Submit command buffer
-//    vkCmdEndRenderPass(cmdBuffer.data());
-    cmdBuffer.End();
-    return cmdBuffer.data();
-
-//    UpdateBuffers(m_Renderer.GetCurrentImageIndex());
 }
+
+
+// Starts a new imGui frame and sets up windows and ui elements
+//void ImGuiLayerVk::OnDraw() {
+//    ImGui_ImplVulkan_NewFrame();
+//    ImGui_ImplGlfw_NewFrame();
+//    ImGui::NewFrame();
+//    m_DrawCallback();
+//    ImGui::ShowDemoWindow();
+//    ImGui::Render();
+//
+//    // Update and Render additional Platform Windows
+//    ImGuiIO &io = ImGui::GetIO();
+//    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+//        ImGui::UpdatePlatformWindows();
+//        ImGui::RenderPlatformWindowsDefault();
+//    }
+//
+//    auto extent = m_Context.Swapchain().Extent();
+//    VkViewport viewport = {};
+//    viewport.x = 0.0f;
+//    viewport.y = 0.0f;
+//    viewport.width = static_cast<float>(extent.width);
+//    viewport.height = static_cast<float>(extent.height);
+//    viewport.minDepth = 0.0f;
+//    viewport.maxDepth = 1.0f;
+//
+//    VkRect2D scissor = {};
+//    scissor.offset = {0, 0};
+//    scissor.extent = extent;
+//
+//    vk::CommandBuffer cmdBuffer = m_CmdBuffers->get(imageIndex);
+//    VkCommandBufferBeginInfo beginInfo = {};
+//    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+//    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+//    beginInfo.pInheritanceInfo = &info;
+//
+//    cmdBuffer.Begin(beginInfo);
+//
+//    vkCmdSetViewport(cmdBuffer.data(), 0, 1, &viewport);
+//    vkCmdSetScissor(cmdBuffer.data(), 0, 1, &scissor);
+//
+//    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmdBuffer.data());
+//
+//    vkCmdEndRenderPass(cmdBuffer.data());
+//    cmdBuffer.End();
+//    return cmdBuffer.data();
+//
+//    UpdateBuffers(m_Renderer.GetCurrentImageIndex());
+//}
 
 
 // Update vertex and index buffer containing the imGui elements when required

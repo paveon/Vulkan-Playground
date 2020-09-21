@@ -5,6 +5,7 @@
     <mapping directory="$PROJECT_DIR$/extern/glfw" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/extern/glm" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/extern/imgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/extern/spirv-cross" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/extern/stb" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/extern/tinyobjloader" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/extern/tinyobjloader/pybind11/tools/clang" vcs="Git" />

@@ -1,5 +1,6 @@
 #include "TextureVk.h"
 #include "Engine/Application.h"
+#include "GraphicsContextVk.h"
 
 using namespace vk;
 

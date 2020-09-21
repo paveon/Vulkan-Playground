@@ -1,14 +1,14 @@
 #include "ImGuiLayer.h"
+#include <Platform/Vulkan/ImGuiLayerVk.h>
 
 #include <memory>
-#include <Platform/Vulkan/ImGuiLayerVk.h>
-#include "Engine/Renderer/renderer.h"
+#include <Engine/Renderer/RendererAPI.h>
 
 
-auto ImGuiLayer::Create(Renderer &renderer) -> std::unique_ptr<ImGuiLayer> {
-    switch (Renderer::GetCurrentAPI()) {
-        case GraphicsAPI::VULKAN:
-            return std::make_unique<ImGuiLayerVk>(renderer);
+auto ImGuiLayer::Create() -> std::unique_ptr<ImGuiLayer> {
+    switch (RendererAPI::GetSelectedAPI()) {
+        case RendererAPI::API::VULKAN:
+            return std::make_unique<ImGuiLayerVk>();
     }
 
     return nullptr;
@@ -67,7 +67,6 @@ void ImGuiLayer::ConfigureImGui(const std::pair<uint32_t, uint32_t> &framebuffer
     io.KeyMap[ImGuiKey_Z] = IO_KEY_Z;
 }
 
-void ImGuiLayer::OnAttach() {
-    Layer::OnAttach();
-    ConfigureImGui(m_Renderer.FramebufferSize());
+void ImGuiLayer::OnAttach(const LayerStack* stack) {
+    Layer::OnAttach(stack);
 }

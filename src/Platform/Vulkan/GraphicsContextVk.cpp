@@ -14,7 +14,7 @@ VkExtent2D GetFramebufferExtent(GLFWwindow* windowHandle) {
 }
 
 GfxContextVk::GfxContextVk(GLFWwindow* windowHandle) : m_WindowHandle(windowHandle),
-                                                       m_Instance(vk::Instance(true)),
+                                                       m_Instance(true),
                                                        m_Surface(vk::Surface(m_Instance.data(), m_WindowHandle)),
                                                        m_Device(m_Instance, m_Surface),
                                                        m_Swapchain(m_Device.createSwapChain(

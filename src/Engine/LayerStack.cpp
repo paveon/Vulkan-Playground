@@ -1,4 +1,5 @@
 #include "LayerStack.h"
+#include "Application.h"
 
 
 auto LayerStack::PopLayer(const Layer* layer) -> std::unique_ptr<Layer> {
@@ -23,4 +24,12 @@ auto LayerStack::PopOverlay(const Layer* overlay) -> std::unique_ptr<Layer> {
       return tmp;
    }
    return nullptr;
+}
+
+LayerStack::~LayerStack() {
+    std::cout << currentTime() << "[" << m_Parent->GetName() << "][LayerStack] Deconstructing" << std::endl;
+    while (!m_Layers.empty()) {
+        m_Layers.back()->OnDetach();
+        m_Layers.pop_back();
+    }
 }

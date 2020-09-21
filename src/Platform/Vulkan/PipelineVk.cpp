@@ -214,9 +214,9 @@ PipelineVk::PipelineVk(
 }
 
 
-void PipelineVk::Bind(VkCommandBuffer cmdBuffer, uint32_t frameIdx) const {
+void PipelineVk::Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex) const {
     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            m_PipelineLayout->data(), 0, 1, &m_DescriptorSets->get(frameIdx), 0, nullptr);
+                            m_PipelineLayout->data(), 0, 1, &m_DescriptorSets->get(imageIndex), 0, nullptr);
 
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline->data());
 }

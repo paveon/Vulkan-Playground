@@ -4,6 +4,7 @@
 #include <Engine/Renderer/UniformBuffer.h>
 #include <Engine/Renderer/vulkan_wrappers.h>
 #include <Engine/Application.h>
+#include "GraphicsContextVk.h"
 
 
 class UniformBufferVk : public UniformBuffer {

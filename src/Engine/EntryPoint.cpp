@@ -1,9 +1,9 @@
 #include "EntryPoint.h"
 #include "Input.h"
 #include <Engine/Core.h>
-#include <thread>
+#include <Engine/Renderer/utils.h>
 
-int main(int, char**) {
+auto main(int, char**) -> int {
    std::cout << currentTime() << "[Engine] Initializing..." << std::endl;
    int result = EXIT_SUCCESS;
    try {

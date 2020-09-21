@@ -8,31 +8,52 @@
 #include "Events/MouseEvents.h"
 #include "Events/KeyEvents.h"
 #include "Timestep.h"
+#include "Core.h"
+
+class LayerStack;
 
 class Layer {
 protected:
+    const LayerStack *m_Parent{};
     std::string m_DebugName;
 
 public:
-    explicit Layer(const char* name = "Layer") : m_DebugName(name) {}
-    virtual ~Layer() { std::cout << "[Application] " << m_DebugName << "::Destroyed" << std::endl; };
+    explicit Layer(const char *name = "Layer") : m_DebugName(name) {}
 
-    virtual void OnAttach() { std::cout << "[Application] " << m_DebugName << "::Attached" << std::endl; }
-    virtual void OnDetach() { std::cout << "[Application] " << m_DebugName << "::Detached" << std::endl; }
-    virtual void OnUpdate(Timestep ts, uint32_t imageIndex) = 0;
-    virtual auto OnDraw(uint32_t imageIndex, const VkCommandBufferInheritanceInfo &info) -> VkCommandBuffer = 0;
+    virtual ~Layer() {
+        std::cout << currentTime() << "[Layer] " << m_DebugName << "::Destroyed" << std::endl;
+    }
 
-    virtual void OnEvent(Event&) {}
-    virtual auto OnWindowResize(WindowResizeEvent&) -> bool { return true; }
-    virtual auto OnMouseMove(MouseMoveEvent&) -> bool { return true; };
-    virtual auto OnMouseButtonPress(MouseButtonPressEvent&) -> bool { return true; }
-    virtual auto OnMouseButtonRelease(MouseButtonReleaseEvent&) -> bool { return true; }
-    virtual auto OnMouseScroll(MouseScrollEvent&) -> bool { return true; }
-    virtual auto OnKeyPress(KeyPressEvent&) -> bool { return true; }
-    virtual auto OnKeyRelease(KeyReleaseEvent&) -> bool { return true; }
-    virtual auto OnCharacterPress(CharacterPressEvent&) -> bool { return true; }
+    virtual void OnAttach(const LayerStack *stack);
 
-    auto LayerName() const -> const std::string& { return m_DebugName; }
+    virtual void OnDetach();
+
+    virtual void OnUpdate(Timestep ts) = 0;
+
+    virtual void OnImGuiDraw() {};
+
+    virtual void OnDraw() = 0;
+
+    virtual void OnEvent(Event &) {}
+
+    virtual auto OnWindowResize(WindowResizeEvent &) -> bool { return true; }
+
+    virtual auto OnMouseMove(MouseMoveEvent &) -> bool { return true; };
+
+    virtual auto OnMouseButtonPress(MouseButtonPressEvent &) -> bool { return true; }
+
+    virtual auto OnMouseButtonRelease(MouseButtonReleaseEvent &) -> bool { return true; }
+
+    virtual auto OnMouseScroll(MouseScrollEvent &) -> bool { return true; }
+
+    virtual auto OnKeyPress(KeyPressEvent &) -> bool { return true; }
+
+    virtual auto OnKeyRelease(KeyReleaseEvent &) -> bool { return true; }
+
+    virtual auto OnCharacterPress(CharacterPressEvent &) -> bool { return true; }
+
+    auto LayerName() const -> const std::string & { return m_DebugName; }
 };
+
 
 #endif //VULKAN_LAYER_H

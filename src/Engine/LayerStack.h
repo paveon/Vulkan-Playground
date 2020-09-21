@@ -9,33 +9,34 @@
 #include <vulkan/vulkan_core.h>
 
 #include "Layer.h"
+#include "Core.h"
 
+class Application;
 
 class LayerStack {
+    friend class Layer;
+
 private:
     using Stack = std::vector<std::unique_ptr<Layer>>;
+    Application* m_Parent;
     Stack m_Layers;
     size_t m_InsertLocation = 0;
 
 public:
-    ~LayerStack() {
-        std::cout << "[Application] Deconstructing layer stack" << std::endl;
-        while (!m_Layers.empty()) {
-            m_Layers.back()->OnDetach();
-            m_Layers.pop_back();
-        }
-    }
+    explicit LayerStack(Application* parent) : m_Parent(parent) {}
+
+    ~LayerStack();
 
     auto PushLayer(std::unique_ptr<Layer> layer) -> Layer * {
         auto it = m_Layers.emplace(m_Layers.begin() + m_InsertLocation, std::move(layer));
         m_InsertLocation++;
-        (*it)->OnAttach();
+        (*it)->OnAttach(this);
         return it->get();
     }
 
-    auto PushOverlay(std::unique_ptr<Layer> &&overlay) -> Layer * {
+    auto PushOverlay(std::unique_ptr<Layer> overlay) -> Layer * {
         m_Layers.emplace_back(std::move(overlay));
-        m_Layers.back()->OnAttach();
+        m_Layers.back()->OnAttach(this);
         return m_Layers.back().get();
     }
 
@@ -60,18 +61,15 @@ public:
         }
     }
 
-    void UpdateLayers(Timestep ts, uint32_t imageIndex) {
+    void UpdateLayers(Timestep ts) {
         for (const auto &layer : m_Layers)
-            layer->OnUpdate(ts, imageIndex);
+            layer->OnUpdate(ts);
     }
 
-    void DrawLayers(uint32_t imageIndex,
-                    std::vector<VkCommandBuffer> &outBuffers,
-                    const VkCommandBufferInheritanceInfo &info) {
-
+    void DrawLayers() {
         for (const auto &layer : m_Layers) {
-            if (auto *buffer = layer->OnDraw(imageIndex, info); buffer)
-                outBuffers.push_back(buffer);
+            layer->OnDraw();
+            layer->OnImGuiDraw();
         }
     }
 };

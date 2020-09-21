@@ -4,12 +4,14 @@
 
 #include "vulkan_wrappers.h"
 #include "utils.h"
+#include "spirv_cross.hpp"
 
 #include <GLFW/glfw3.h>
 #include <unordered_map>
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <iostream>
+#include <spirv_glsl.hpp>
 
 
 auto roundUp(size_t number, size_t multiple) -> size_t {
@@ -215,8 +217,20 @@ namespace vk {
 
 
     ShaderModule::ShaderModule(VkDevice device, const std::string &filename) : m_Device(device) {
-        std::vector<char> shaderCode = readFile(filename);
-        m_CodeSize = shaderCode.size();
+        std::vector<uint32_t> shaderCode = readFile(filename);
+
+        // Reflect GLSL code
+        spirv_cross::CompilerGLSL glsl(shaderCode);
+        spirv_cross::ShaderResources resources = glsl.get_shader_resources();
+        for (auto &resource : resources.stage_inputs)
+        {
+            std::cout << "[" << filename << "] " << resource.name << std::endl;
+//            unsigned set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+//            unsigned binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
+//            printf("Image %s at set = %u, binding = %u\n", resource.name.c_str(), set, binding);
+        }
+
+        m_CodeSize = shaderCode.size() * sizeof(uint32_t);
         std::cout << "[Vulkan] Loaded shader '" << filename << "' bytecode, bytes: " << m_CodeSize << std::endl;
 
         VkShaderModuleCreateInfo createInfo = {};

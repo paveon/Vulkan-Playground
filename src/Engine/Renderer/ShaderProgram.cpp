@@ -1,12 +1,12 @@
 #include "ShaderProgram.h"
-
 #include <Platform/Vulkan/ShaderProgramVk.h>
-#include "renderer.h"
+
+#include "RendererAPI.h"
 
 
 auto ShaderProgram::Create(const char* filepath) -> std::unique_ptr<ShaderProgram> {
-   switch (Renderer::GetCurrentAPI()) {
-      case GraphicsAPI::VULKAN:
+   switch (RendererAPI::GetSelectedAPI()) {
+       case RendererAPI::API::VULKAN:
          return std::make_unique<ShaderProgramVk>(filepath);
    }
 

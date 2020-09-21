@@ -2,8 +2,8 @@
 #define GAME_ENGINE_IMGUILAYERVK_H
 
 #include <Engine/ImGui/ImGuiLayer.h>
-#include <Engine/Renderer/renderer.h>
 #include <Engine/Application.h>
+#include "GraphicsContextVk.h"
 
 //struct PushConstBlock {
 //    math::vec2 scale;
@@ -36,16 +36,19 @@ private:
     void InitResources();
 
 public:
-    explicit ImGuiLayerVk(Renderer &renderer) :
-            ImGuiLayer(renderer),
+    explicit ImGuiLayerVk() :
+            ImGuiLayer(),
             m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
             m_Device(m_Context.GetDevice()),
-            m_RenderPass((VkRenderPass)m_Renderer.GetRenderPass().VkHandle()) {}
+            m_RenderPass(nullptr)
+//            m_RenderPass((VkRenderPass)m_Renderer.GetRenderPass().VkHandle())
+            {}
 
     ~ImGuiLayerVk() override;
 
-    void OnAttach() override {
-        ImGuiLayer::OnAttach();
+    void OnAttach(const LayerStack* stack) override {
+        ImGuiLayer::OnAttach(stack);
+        ImGuiLayer::ConfigureImGui(m_Context.FramebufferSize());
         InitResources();
     }
 
@@ -55,9 +58,11 @@ public:
     // Draw current ImGui frame into a command buffer
     auto RecordBuffer(size_t index) -> VkCommandBuffer;
 
-    void OnUpdate(Timestep, uint32_t) override {}
+    void OnUpdate(Timestep) override {}
 
-    auto OnDraw(uint32_t imageIndex, const VkCommandBufferInheritanceInfo &info) -> VkCommandBuffer override;
+    void NewFrame() override;
+
+    void EndFrame() override;
 };
 
 

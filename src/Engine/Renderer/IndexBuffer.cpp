@@ -1,11 +1,12 @@
 #include "IndexBuffer.h"
-
 #include <Platform/Vulkan/IndexBufferVk.h>
-#include "renderer.h"
+
+#include "RendererAPI.h"
+
 
 auto IndexBuffer::Create() -> std::unique_ptr<IndexBuffer> {
-    switch (Renderer::GetCurrentAPI()) {
-        case GraphicsAPI::VULKAN:
+    switch (RendererAPI::GetSelectedAPI()) {
+        case RendererAPI::API::VULKAN:
             return std::make_unique<IndexBufferVk>();
     }
 

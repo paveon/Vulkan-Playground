@@ -43,7 +43,12 @@ namespace math {
     using Type = float;
 
     struct vec2 {
-        Type x, y;
+        union {
+            Type data[2] = {};
+            struct {
+                Type x, y;
+            };
+        };
 
     public:
         vec2() : x(0), y(0) {}
@@ -59,7 +64,12 @@ namespace math {
 
 
     struct vec3 {
-        float x, y, z;
+        union {
+            Type data[3] = {};
+            struct {
+                Type x, y, z;
+            };
+        };
 
     public:
         vec3() : x(0.0f), y(0.0f), z(0.0f) {}
@@ -96,15 +106,7 @@ namespace math {
 
         auto operator[](int index) -> float & {
             assert(index >= 0 && index < 3);
-            switch (index) {
-                default:
-                case 0:
-                    return x;
-                case 1:
-                    return y;
-                case 2:
-                    return z;
-            }
+            return data[index];
         }
 
         auto operator==(const vec3 &other) const -> bool { return x == other.x && y == other.y && z == other.z; }
@@ -130,7 +132,12 @@ namespace math {
 
 
     struct vec4 {
-        float x, y, z, w;
+        union {
+            Type data[4] = {};
+            struct {
+                Type x, y, z, w;
+            };
+        };
 
     public:
         vec4() : x(1.0f), y(1.0f), z(1.0f), w(1.0f) {}
@@ -161,32 +168,12 @@ namespace math {
 
         auto operator[](int index) -> float & {
             assert(index >= 0 && index < 4);
-            switch (index) {
-                default:
-                case 0:
-                    return x;
-                case 1:
-                    return y;
-                case 2:
-                    return z;
-                case 3:
-                    return w;
-            }
+            return data[index];
         }
 
         auto operator[](int index) const -> float {
             assert(index >= 0 && index < 4);
-            switch (index) {
-                default:
-                case 0:
-                    return x;
-                case 1:
-                    return y;
-                case 2:
-                    return z;
-                case 3:
-                    return w;
-            }
+            return data[index];
         }
 
         auto operator==(const vec4 &other) const -> bool {

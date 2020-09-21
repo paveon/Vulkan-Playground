@@ -91,3 +91,95 @@ auto Device::findSupportedFormat(const std::vector<VkFormat> &candidates, VkImag
 void Device::Release() {
     std::cout << "[Device] Destroying rendering device" << std::endl;
 }
+
+
+void RingStageBuffer::Allocate(VkDeviceSize size) {
+    if (m_Memory) {
+        if (size > m_Size) {
+            VkMemoryPropertyFlags memoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            vk::Buffer *newBuffer = m_Device->createBuffer({m_Device->TransferQueueIdx()},
+                                                           size,
+                                                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+
+            vk::DeviceMemory *newMemory = m_Device->allocateBufferMemory(*newBuffer, memoryFlags);
+            newBuffer->BindMemory(newMemory->data(), 0);
+            newMemory->MapMemory(0, size);
+
+            void *srcPtr = (uint8_t *) m_Memory->m_Mapped + m_StartOffset;
+            if (m_EndOffset > m_StartOffset) {
+                VkDeviceSize range = m_EndOffset - m_StartOffset;
+                std::memcpy(newMemory->m_Mapped, srcPtr, range);
+            } else {
+                VkDeviceSize range = m_Size - m_StartOffset;
+                void *dstPtr = newMemory->m_Mapped;
+                std::memcpy(dstPtr, srcPtr, range);
+                dstPtr = (uint8_t *) dstPtr + range;
+                srcPtr = m_Memory->m_Mapped;
+                range = m_EndOffset;
+                std::memcpy(dstPtr, srcPtr, range);
+            }
+            m_StartOffset = 0;
+            m_EndOffset = m_Size;
+            m_Size = size;
+            m_Data = newBuffer;
+            m_Memory = newMemory;
+        }
+    } else {
+        VkMemoryPropertyFlags memoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        m_Size = size;
+        m_Data = m_Device->createBuffer({m_Device->TransferQueueIdx()},
+                                        m_Size,
+                                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+        m_Memory = m_Device->allocateBufferMemory(*m_Data, memoryFlags);
+        m_Data->BindMemory(m_Memory->data(), 0);
+        m_Memory->MapMemory(0, m_Size);
+    }
+}
+
+void RingStageBuffer::StageData(vk::Buffer **dstHandlePtr,
+                                VkDeviceSize *dstOffsetHandlePtr,
+                                const void *data,
+                                VkDeviceSize dataSize) {
+    VkDeviceSize freeSpace = m_EndOffset > m_StartOffset ?
+                             m_Size + m_StartOffset - m_EndOffset : m_Size - m_StartOffset + m_EndOffset;
+
+    if (dataSize >= freeSpace)
+        throw std::runtime_error("[RingStageBuffer] Not enough free space");
+
+    m_Metadata.push(DataInfo{
+            dstHandlePtr,
+            dstOffsetHandlePtr,
+            m_EndOffset,
+            dataSize
+    });
+
+    if (m_EndOffset + dataSize > m_Size) {
+        void *bufferPtr = (uint8_t *) m_Memory->m_Mapped + m_EndOffset;
+        const void *dataPtr = data;
+        VkDeviceSize chunkSize = m_Size - m_EndOffset;
+        std::memcpy(bufferPtr, dataPtr, chunkSize);
+        dataPtr = (uint8_t *) dataPtr + chunkSize;
+        m_EndOffset = dataSize - chunkSize;
+        std::memcpy(m_Memory->m_Mapped, dataPtr, m_EndOffset);
+    } else {
+        std::memcpy((uint8_t*)m_Memory->m_Mapped + m_EndOffset, data, dataSize);
+        m_EndOffset += dataSize;
+    }
+}
+
+
+void DeviceBuffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage) {
+    std::set<uint32_t> indices{m_Device->queueIndex(QueueFamily::TRANSFER),
+                               m_Device->queueIndex(QueueFamily::GRAPHICS)};
+    m_Buffer = vk::Buffer(*m_Device, indices, size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(*m_Device, m_Buffer.data(), &memRequirements);
+    auto memoryTypeIdx = m_Device->getMemoryType(
+            memRequirements.memoryTypeBits,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    m_BufferMemory = vk::DeviceMemory(*m_Device, memoryTypeIdx, size);
+    m_Buffer.BindMemory(m_BufferMemory.data(), 0);
+}

@@ -52,7 +52,7 @@ auto getRequiredVulkanExtensions(bool enableValidation) -> std::vector<const cha
 
 auto createVulkanInstance(const std::vector<const char *> &validationLayers) -> VkInstance;
 
-auto readFile(const std::string &filename) -> std::vector<char>;
+auto readFile(const std::string &filename) -> std::vector<uint32_t>;
 
 auto imageBarrier(VkImage image,
                   VkAccessFlags srcAccessMask,

@@ -7,6 +7,7 @@
 #include <array>
 #include <tuple>
 #include <cstring>
+#include <queue>
 
 #include "utils.h"
 #include "vulkan_wrappers.h"
@@ -398,7 +399,7 @@ public:
 
         void *bufferPtr = nullptr;
         vkMapMemory(*m_Device, m_BufferMemory->data(), 0, dataSize, 0, &bufferPtr);
-        memcpy(bufferPtr, data, dataSize);
+        std::memcpy(bufferPtr, data, dataSize);
         vkUnmapMemory(*m_Device, m_BufferMemory->data());
         m_DataSize = dataSize;
     }
@@ -414,31 +415,30 @@ public:
 class DeviceBuffer {
 private:
     Device *m_Device = nullptr;
-    vk::Buffer *m_Buffer = nullptr;
-    vk::DeviceMemory *m_BufferMemory = nullptr;
-    StagingBuffer m_StagingBuffer;
+    vk::Buffer m_Buffer;
+    vk::DeviceMemory m_BufferMemory;
+//    StagingBuffer m_StagingBuffer;
 
     void Move(DeviceBuffer &other) {
-        m_Device = other.m_Device;
-        m_Buffer = other.m_Buffer;
-        m_BufferMemory = other.m_BufferMemory;
-        m_StagingBuffer = std::move(other.m_StagingBuffer);
+        m_Buffer = std::move(other.m_Buffer);
+        m_BufferMemory = std::move(other.m_BufferMemory);
+//        m_Device = other.m_Device;
+//        m_Buffer = other.m_Buffer;
+//        m_BufferMemory = other.m_BufferMemory;
+//        m_StagingBuffer = std::move(other.m_StagingBuffer);
     }
 
 
 public:
-    DeviceBuffer(Device *device, const void *data, VkDeviceSize dataSize, const vk::CommandBuffer &cmdBuffer,
-                 VkBufferUsageFlags usage) :
-            m_Device(device), m_StagingBuffer(device, data, dataSize) {
-        VkBufferUsageFlags bufferUsage = usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        std::set<uint32_t> indices = {
-                device->queueIndex(QueueFamily::TRANSFER),
-                device->queueIndex(QueueFamily::GRAPHICS)
-        };
-        m_Buffer = device->createBuffer(indices, dataSize, bufferUsage);
-        m_BufferMemory = device->allocateBufferMemory(*m_Buffer, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        vkBindBufferMemory(*device, m_Buffer->data(), m_BufferMemory->data(), 0);
-        copyBuffer(cmdBuffer, m_StagingBuffer, *m_Buffer, dataSize);
+    explicit DeviceBuffer(Device *device) : m_Device(device) {}
+
+    DeviceBuffer(Device *device, VkDeviceSize size, VkBufferUsageFlags usage) : m_Device(device) {
+        Allocate(size, usage);
+//        m_Buffer = device->createBuffer(indices, size, );
+//        m_BufferMemory = device->allocateBufferMemory(*m_Buffer, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+//        m_Buffer->BindMemory(m_BufferMemory->data(), 0);
+
+//        copyBuffer(cmdBuffer, m_StagingBuffer, *m_Buffer, dataSize);
     }
 
     DeviceBuffer() = default;
@@ -455,13 +455,105 @@ public:
         return *this;
     }
 
-    auto buffer() const -> const VkBuffer & { return m_Buffer->data(); }
+    void Allocate(VkDeviceSize size, VkBufferUsageFlags usage);
 
-    auto bufferPtr() const -> const VkBuffer * { return m_Buffer->ptr(); }
+    auto buffer() const -> const VkBuffer & { return m_Buffer.data(); }
 
-    auto data() const -> const vk::Buffer & { return *m_Buffer; }
+    auto bufferPtr() const -> const VkBuffer * { return m_Buffer.ptr(); }
 
-    auto size() const -> VkDeviceSize { return m_StagingBuffer.size(); }
+    auto data() const -> const vk::Buffer & { return m_Buffer; }
+
+    auto size() const -> VkDeviceSize { return m_Buffer.size(); }
+};
+
+
+class RingStageBuffer {
+public:
+    enum class DataType {
+        VERTEX_DATA,
+        INDEX_DATA,
+        TEXTURE_DATA,
+        UNIFORM_DATA
+    };
+
+private:
+    struct DataInfo {
+        vk::Buffer **m_DstBufferPtr;
+        VkDeviceSize *m_DstOffsetPtr;
+        VkDeviceSize m_Offset;
+        VkDeviceSize m_Size;
+    };
+
+    std::queue<DataInfo> m_Metadata;
+    Device *m_Device = nullptr;
+    vk::Buffer *m_Data = nullptr;
+    vk::DeviceMemory *m_Memory = nullptr;
+
+    VkDeviceSize m_Size = 0;
+    VkDeviceSize m_StartOffset = 0;
+    VkDeviceSize m_EndOffset = 0;
+
+    void Move(RingStageBuffer &other) {
+        m_Metadata = std::move(other.m_Metadata);
+        m_Device = other.m_Device;
+        m_Data = other.m_Data;
+        m_Memory = other.m_Memory;
+        m_Size = other.m_Size;
+        m_StartOffset = other.m_EndOffset;
+        m_EndOffset = other.m_EndOffset;
+
+        other.m_Device = nullptr;
+        other.m_Data = nullptr;
+        other.m_Memory = nullptr;
+        other.m_Size = 0;
+        other.m_StartOffset = 0;
+        other.m_EndOffset = 0;
+    }
+
+public:
+    explicit RingStageBuffer(Device *device) : m_Device(device) {}
+
+    RingStageBuffer(Device *device, VkDeviceSize size) : m_Device(device) { Allocate(size); }
+
+    ~RingStageBuffer() {
+        vkUnmapMemory(*m_Device, m_Memory->data());
+    }
+
+    RingStageBuffer(const RingStageBuffer &other) = delete;
+
+    auto operator=(const RingStageBuffer &other) -> RingStageBuffer & = delete;
+
+    RingStageBuffer(RingStageBuffer &&other) noexcept { Move(other); }
+
+    auto operator=(RingStageBuffer &&other) noexcept -> RingStageBuffer & {
+        if (this == &other) return *this;
+        Move(other);
+        return *this;
+    }
+
+    void Allocate(VkDeviceSize size);
+
+    void StageData(vk::Buffer **dstHandlePtr,
+                   VkDeviceSize *dstOffsetHandlePtr,
+                   const void *data,
+                   VkDeviceSize dataSize);
+
+    auto CopyRanges() -> std::vector<VkBufferCopy> {
+        if (m_EndOffset > m_StartOffset) {
+            return {VkBufferCopy{m_StartOffset, 0, m_EndOffset - m_StartOffset}};
+        } else {
+            return {
+                    VkBufferCopy{m_StartOffset, 0, m_Size - m_StartOffset},
+                    VkBufferCopy{0, m_Size - m_StartOffset, m_EndOffset}
+            };
+        }
+    }
+
+    auto data() const -> const vk::Buffer & { return *m_Data; }
+
+    auto size() const -> VkDeviceSize { return m_Size; }
+
+    operator const vk::Buffer &() const { return data(); }
 };
 
 

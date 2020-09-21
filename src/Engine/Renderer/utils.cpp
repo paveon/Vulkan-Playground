@@ -6,8 +6,8 @@
 #include <array>
 #include <limits>
 #include <cstring>
-
-using namespace vk;
+#include <Engine/Core.h>
+#include <sstream>
 
 static bool s_GLFWInitialized = false;
 
@@ -83,24 +83,26 @@ VKAPI_ATTR auto VKAPI_CALL debugCallback(
         void *pUserData) -> VkBool32 {
     (void) pUserData;
 
-    std::cout << "[Vulkan]";
+    std::ostringstream ss;
+    ss << currentTime() << "[Vulkan]";
 
     if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) {
-        std::cout << "[General]";
+        ss << "[General]";
     } else if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
-        std::cout << "[Validation]";
+        ss << "[Validation]";
     } else if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {
-        std::cout << "[Performance]";
+        ss << "[Performance]";
     }
 
     if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-        std::cout << "[ERROR]";
+        ss << "[ERROR]";
     } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        std::cout << "[WARNING]";
+        ss << "[WARNING]";
     } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
-        std::cout << "[INFO]";
+        ss << "[INFO]";
     }
-    std::cout << " " << pCallbackData->pMessage << std::endl;
+    ss << " " << pCallbackData->pMessage;
+    std::cout << ss.str() << std::endl;
 
     return VK_FALSE;
 }
@@ -181,19 +183,37 @@ auto createVulkanInstance(const std::vector<const char *> &validationLayers) -> 
 }
 
 
-auto readFile(const std::string &filename) -> std::vector<char> {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("failed to open file!");
+auto readFile(const std::string &filename) -> std::vector<uint32_t> {
+    FILE *file = fopen(filename.c_str(), "rb");
+    if (!file)
+    {
+        fprintf(stderr, "Failed to open SPIR-V file: %s\n", filename.c_str());
+        return {};
     }
 
-    size_t fileSize = (size_t) file.tellg();
-    std::vector<char> buffer(fileSize);
+    fseek(file, 0, SEEK_END);
+    size_t len = std::ftell(file) / sizeof(uint32_t);
+    rewind(file);
 
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-    file.close();
-    return buffer;
+    std::vector<uint32_t> spirv(len);
+    if (fread(spirv.data(), sizeof(uint32_t), len, file) != size_t(len))
+        spirv.clear();
+
+    fclose(file);
+    return spirv;
+
+//    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+//    if (!file.is_open()) {
+//        throw std::runtime_error("failed to open file!");
+//    }
+//
+//    size_t fileSize = (size_t) file.tellg();
+//    std::vector<char> buffer(fileSize);
+//
+//    file.seekg(0);
+//    file.read(buffer.data(), fileSize);
+//    file.close();
+//    return buffer;
 }
 
 
@@ -219,18 +239,19 @@ auto imageBarrier(VkImage image,
 }
 
 
-void copyBuffer(const CommandBuffer &cmdBuffer,
-                const Buffer &srcBuffer,
-                const Buffer &dstBuffer, VkDeviceSize size) {
+void copyBuffer(VkCommandBuffer cmdBuffer,
+                const vk::Buffer &srcBuffer,
+                const vk::Buffer &dstBuffer,
+                VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0) {
     VkBufferCopy copyRegion = {};
-    copyRegion.srcOffset = 0; // Optional
-    copyRegion.dstOffset = 0; // Optional
+    copyRegion.srcOffset = srcOffset;
+    copyRegion.dstOffset = dstOffset;
     copyRegion.size = size;
-    vkCmdCopyBuffer(cmdBuffer.data(), srcBuffer.data(), dstBuffer.data(), 1, &copyRegion);
+    vkCmdCopyBuffer(cmdBuffer, srcBuffer.data(), dstBuffer.data(), 1, &copyRegion);
 }
 
 
-void copyBufferToImage(const CommandBuffer &cmdBuffer, const Buffer &buffer, const Image &image) {
+void copyBufferToImage(const vk::CommandBuffer &cmdBuffer, const vk::Buffer &buffer, const vk::Image &image) {
     VkBufferImageCopy region = {};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;

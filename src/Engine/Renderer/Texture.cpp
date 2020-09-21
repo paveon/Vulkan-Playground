@@ -1,7 +1,11 @@
 #include "Texture.h"
-#include "renderer.h"
-#include <stb_image.h>
 #include <Platform/Vulkan/TextureVk.h>
+
+#include <stb_image.h>
+#include <cstring>
+#include "RendererAPI.h"
+
+
 
 
 Texture2D::Texture2D(unsigned char* data, int width, int height, int channels) : m_Width(width),
@@ -16,9 +20,10 @@ Texture2D::Texture2D(unsigned char* data, int width, int height, int channels) :
 }
 
 
-std::unique_ptr<Texture2D> Texture2D::Create(const char* filepath) {
-   int width, height, channels;
-   auto tmp = stbi_load(filepath, &width, &height, &channels, STBI_rgb_alpha);
+auto Texture2D::Create(const char* filepath) -> std::unique_ptr<Texture2D> {
+   int width = 0, height = 0, channels = 0;
+
+   auto *tmp = stbi_load(filepath, &width, &height, &channels, STBI_rgb_alpha);
    if (!tmp)
       throw std::runtime_error("failed to load texture image!");
 
@@ -28,9 +33,9 @@ std::unique_ptr<Texture2D> Texture2D::Create(const char* filepath) {
 }
 
 
-std::unique_ptr<Texture2D> Texture2D::Create(unsigned char* data, int width, int height, int channels) {
-   switch (Renderer::GetCurrentAPI()) {
-      case GraphicsAPI::VULKAN:
+auto Texture2D::Create(unsigned char* data, int width, int height, int channels) -> std::unique_ptr<Texture2D> {
+   switch (RendererAPI::GetSelectedAPI()) {
+       case RendererAPI::API::VULKAN:
          return std::make_unique<Texture2DVk>(data, width, height, channels);
    }
 

@@ -1,22 +1,20 @@
 #include "Pipeline.h"
+#include <Platform/Vulkan/PipelineVk.h>
 
-#include "renderer.h"
-#include "Platform/Vulkan/PipelineVk.h"
-#include "Platform/Vulkan/ShaderProgramVk.h"
-#include "Platform/Vulkan/RenderPassVk.h"
-#include "ShaderProgram.h"
+#include "RendererAPI.h"
+#include <Platform/Vulkan/ShaderProgramVk.h>
+#include <Platform/Vulkan/RenderPassVk.h>
 
-
-std::unique_ptr<Pipeline>
-Pipeline::Create(const RenderPass& renderPass,
+auto Pipeline::Create(const RenderPass& renderPass,
                  const ShaderProgram& vertexShader,
                  const ShaderProgram& fragShader,
                  const VertexLayout& vertexLayout,
                  const DescriptorLayout& descriptorLayout,
                  const std::vector<PushConstant>& pushConstants,
-                 bool enableDepthTest) {
-   switch (Renderer::GetCurrentAPI()) {
-      case GraphicsAPI::VULKAN:
+                 bool enableDepthTest) -> std::unique_ptr<Pipeline> {
+
+   switch (RendererAPI::GetSelectedAPI()) {
+       case RendererAPI::API::VULKAN:
          return std::make_unique<PipelineVk>(static_cast<const RenderPassVk&>(renderPass),
                                              static_cast<const ShaderProgramVk&>(vertexShader),
                                              static_cast<const ShaderProgramVk&>(fragShader),

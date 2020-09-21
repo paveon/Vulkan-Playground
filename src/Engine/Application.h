@@ -5,7 +5,6 @@
 #include <mutex>
 #include <queue>
 
-#include "Renderer/renderer.h"
 #include "Events/Event.h"
 #include "Events/WindowEvents.h"
 #include "Events/MouseEvents.h"
@@ -18,7 +17,7 @@ class Application {
 private:
     static Application *s_Application;
 
-    const std::string m_ApplicationName;
+    const std::string m_Name;
 
     std::unique_ptr<Window> m_Window = nullptr;
 
@@ -31,6 +30,7 @@ private:
 
     void Init();
 
+    //TODO: temporary, event system will be reworked to avoid allocations
     void OnEvent(std::unique_ptr<Event> e);
 
     void OnWindowClose(WindowCloseEvent &e);
@@ -64,10 +64,12 @@ protected:
 
     auto PopOverlay(const Layer *overlay) -> std::unique_ptr<Layer> { return m_LayerStack.PopOverlay(overlay); }
 
-    std::unique_ptr<Renderer> m_Renderer = nullptr;
-
 public:
     virtual ~Application();
+
+    auto GetName() const -> const std::string & { return m_Name; }
+
+    void Run();
 
     static auto Get() -> Application & { return *s_Application; }
 
@@ -76,8 +78,6 @@ public:
     static auto GetGraphicsContext() -> GfxContext & { return s_Application->m_Window->Context(); }
 
     static auto CreateApplication() -> std::unique_ptr<Application>;
-
-    void Run();
 };
 
 

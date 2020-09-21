@@ -1,12 +1,12 @@
 #include "RenderPass.h"
-
 #include <Platform/Vulkan/RenderPassVk.h>
-#include "renderer.h"
+
+#include "RendererAPI.h"
 
 
-std::unique_ptr<RenderPass> RenderPass::Create() {
-   switch (Renderer::GetCurrentAPI()) {
-      case GraphicsAPI::VULKAN:
+auto RenderPass::Create() -> std::unique_ptr<RenderPass> {
+   switch (RendererAPI::GetSelectedAPI()) {
+      case RendererAPI::API::VULKAN:
          return std::make_unique<RenderPassVk>();
    }
 

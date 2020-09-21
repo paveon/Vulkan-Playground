@@ -11,39 +11,40 @@
 #include "Engine/MouseButtonCodes.h"
 
 
-class Renderer;
+class RendererVk;
 
 class RenderPass;
 
 
 class ImGuiLayer : public Layer {
-    using DrawCallbackFunc = void (*)();
-
-private:
-    // Initialize styles, keys, etc.
-    static void ConfigureImGui(const std::pair<uint32_t, uint32_t> &framebufferSize);
+//    using DrawCallbackFunc = void (*)();
 
 protected:
-    explicit ImGuiLayer(Renderer &renderer) : Layer("ImGuiLayer"), m_Renderer(renderer) {
+//    DrawCallbackFunc m_DrawCallback = []() {};
+
+    explicit ImGuiLayer() : Layer("ImGuiLayer") {
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
     }
 
-    Renderer &m_Renderer;
-
-    DrawCallbackFunc m_DrawCallback = []() {};
+    // Initialize styles, keys, etc.
+    static void ConfigureImGui(const std::pair<uint32_t, uint32_t> &framebufferSize);
 
 public:
     ~ImGuiLayer() override { ImGui::DestroyContext(); }
 
-    static auto Create(Renderer &renderer) -> std::unique_ptr<ImGuiLayer>;
+    static auto Create() -> std::unique_ptr<ImGuiLayer>;
 
-    void SetDrawCallback(DrawCallbackFunc cbFunc) { m_DrawCallback = cbFunc; }
+//    void SetDrawCallback(DrawCallbackFunc cbFunc) { m_DrawCallback = cbFunc; }
 
-    void OnAttach() override;
+    void OnAttach(const LayerStack *stack) override;
 
-    auto OnDraw(uint32_t, const VkCommandBufferInheritanceInfo &info) -> VkCommandBuffer override = 0;
+    virtual void NewFrame() = 0;
+
+    virtual void EndFrame() = 0;
+
+    void OnDraw() override {};
 
     auto OnMouseScroll(MouseScrollEvent &e) -> bool override {
         ImGuiIO &io = ImGui::GetIO();

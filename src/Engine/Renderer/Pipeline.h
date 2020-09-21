@@ -76,7 +76,7 @@ public:
 
     virtual void Recreate(const RenderPass&) {}
 
-    virtual void Bind(VkCommandBuffer cmdBuffer, uint32_t frameIdx) const = 0;
+    virtual void Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex) const = 0;
 
     virtual void BindTexture(const Texture2D &texture, uint32_t binding) const = 0;
 

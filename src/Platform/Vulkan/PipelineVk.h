@@ -4,6 +4,7 @@
 #include <Engine/Renderer/Pipeline.h>
 #include <Engine/Renderer/vulkan_wrappers.h>
 #include <Engine/Application.h>
+#include "GraphicsContextVk.h"
 
 class ShaderProgramVk;
 
@@ -57,7 +58,7 @@ public:
 
     void Recreate(const RenderPass &renderPass) override;
 
-    void Bind(VkCommandBuffer cmdBuffer, uint32_t frameIdx) const override;
+    void Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex) const override;
 
     void BindTexture(const vk::ImageView& texture, uint32_t binding) const;
 

@@ -1,17 +1,16 @@
 #include "Application.h"
 #include "Core.h"
-#include "Renderer/utils.h"
 #include <chrono>
 #include <memory>
 #include <thread>
+#include <Platform/Vulkan/RendererVk.h>
 
 Application *Application::s_Application;
 
-Application::Application(const char *name) : m_ApplicationName(name) {
+Application::Application(const char *name) : m_Name(name), m_LayerStack(this) {
     if (s_Application) {
         std::ostringstream ss;
-        ss << "[Engine] Application '" << s_Application->m_ApplicationName << " ["
-           << s_Application << "]' already exists!";
+        ss << "[Application] '" << s_Application->m_Name << " [" << s_Application << "]' already exists!";
         throw std::runtime_error(ss.str());
     }
 
@@ -20,15 +19,17 @@ Application::Application(const char *name) : m_ApplicationName(name) {
 }
 
 Application::~Application() {
-    std::cout << "[Engine] Terminating application..." << std::endl;
+    std::cout << currentTime() << "[" << s_Application->m_Name << "] Exiting" << std::endl;
+    Renderer::Destroy();
 }
 
 void Application::Init() {
-    m_Window = Window::Create(800, 600, m_ApplicationName.data());
+    m_Window = Window::Create(800, 600, m_Name.data());
     m_Window->SetEventCallback([this](std::unique_ptr<Event> event) { OnEvent(std::move(event)); });
-    m_Renderer = std::make_unique<Renderer>(static_cast<GfxContextVk &>(m_Window->Context()));
+//    m_Renderer = std::make_unique<RendererVk>(static_cast<GfxContextVk &>(m_Window->Context()));
+    Renderer::Init();
 
-    std::cout << currentTime() << "[Engine] Initialized application" << std::endl;
+    std::cout << currentTime() << "[" << s_Application->m_Name << "] Initialized" << std::endl;
 }
 
 void Application::Run() {
@@ -47,19 +48,26 @@ void Application::Run() {
 
                 ProcessEventQueue();
 
-                submitBuffers.clear();
+                Renderer::NewFrame();
 
-                auto imageIndex = m_Renderer->AcquireNextImage();
+                m_LayerStack.UpdateLayers(timestep);
+                m_LayerStack.DrawLayers();
+
+                Renderer::PresentFrame();
+
+//                submitBuffers.clear();
+
+//                auto imageIndex = m_Renderer->AcquireNextImage();
 
                 // Inheritance info for the secondary command buffers
-                VkCommandBufferInheritanceInfo inheritanceInfo = {};
-                inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-                inheritanceInfo.renderPass = (VkRenderPass) m_Renderer->GetRenderPass().VkHandle();
-                inheritanceInfo.framebuffer = m_Renderer->GetFramebuffer().data();
-
-                m_LayerStack.UpdateLayers(timestep, imageIndex);
-                m_LayerStack.DrawLayers(imageIndex, submitBuffers, inheritanceInfo);
-                m_Renderer->DrawFrame(submitBuffers);
+//                VkCommandBufferInheritanceInfo inheritanceInfo = {};
+//                inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+//                inheritanceInfo.renderPass = (VkRenderPass) m_Renderer->GetRenderPass().VkHandle();
+//                inheritanceInfo.framebuffer = m_Renderer->GetFramebuffer().data();
+//
+//                m_LayerStack.UpdateLayers(timestep, imageIndex);
+//                m_LayerStack.DrawLayers(imageIndex, submitBuffers, inheritanceInfo);
+//                m_Renderer->DrawFrame(submitBuffers);
 
 //                auto drawEnd = TIME_NOW;
 //                auto drawTime = std::chrono::duration_cast<std::chrono::microseconds>(drawEnd - currentTime);
@@ -68,6 +76,9 @@ void Application::Run() {
 //                if (drawTime < frameTiming)
 //                    std::this_thread::sleep_for(frameTiming - drawTime);
             }
+
+            Renderer::WaitIdle();
+
         } catch (const std::exception &e) {
             std::cerr << e.what() << std::endl;
         }
@@ -75,6 +86,7 @@ void Application::Run() {
     while (m_Running) {
         m_Window->OnUpdate();
     }
+
     renderThread.join();
 }
 
@@ -85,13 +97,15 @@ void Application::OnEvent(std::unique_ptr<Event> e) {
 }
 
 void Application::OnWindowClose(WindowCloseEvent &) {
-    std::cout << "[Application] Closing window..." << std::endl;
+    std::cout << currentTime() << "[" << s_Application->m_Name << "] Closing window" << std::endl;
     m_Running = false;
 }
 
 void Application::OnWindowResize(WindowResizeEvent &e) {
-    std::cout << "[Application] Resizing window [" << e.Width() << ", " << e.Height() << "]" << std::endl;
-    m_Renderer->OnWindowResize(e);
+    std::cout << currentTime() << "[" << s_Application->m_Name << "] Resizing window ["
+              << e.Width() << ", " << e.Height() << "]" << std::endl;
+
+    Renderer::OnWindowResize(e);
 }
 
 void Application::ProcessEventQueue() {

@@ -1,11 +1,10 @@
 #include "UniformBuffer.h"
-
 #include <Platform/Vulkan/UniformBufferVk.h>
-#include "renderer.h"
+#include "RendererAPI.h"
 
 auto UniformBuffer::Create(size_t objectByteSize) -> std::unique_ptr<UniformBuffer> {
-    switch (Renderer::GetCurrentAPI()) {
-        case GraphicsAPI::VULKAN:
+    switch (RendererAPI::GetSelectedAPI()) {
+        case RendererAPI::API::VULKAN:
             return std::make_unique<UniformBufferVk>(objectByteSize);
     }
 
