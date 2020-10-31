@@ -8,57 +8,7 @@
 #include <array>
 #include <mathlib.h>
 
-auto roundUp(size_t number, size_t multiple) -> size_t;
-
 typedef struct GLFWwindow GLFWwindow;
-
-template<class T>
-inline void hash_combine(std::size_t &s, const T &v) {
-    std::hash<T> h;
-    s ^= h(v) + 0x9e3779b9 + (s << 6u) + (s >> 2u);
-}
-
-
-using VertexIndex = uint32_t;
-
-struct Vertex {
-    math::vec3 pos;
-    math::vec3 color;
-    math::vec2 texCoord;
-
-    static auto getBindingDescription() -> VkVertexInputBindingDescription {
-        VkVertexInputBindingDescription bindingDescription = {};
-        bindingDescription.binding = 0;
-        bindingDescription.stride = sizeof(Vertex);
-        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-        return bindingDescription;
-    }
-
-    static auto getAttributeDescriptions() -> std::array<VkVertexInputAttributeDescription, 3> {
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = {};
-        attributeDescriptions[0].binding = 0;
-        attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[0].offset = 0;
-
-        attributeDescriptions[1].binding = 0;
-        attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(Vertex, color);
-
-        attributeDescriptions[2].binding = 0;
-        attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-        return attributeDescriptions;
-    }
-
-    auto operator==(const Vertex &other) const -> bool {
-        return pos == other.pos && color == other.color && texCoord == other.texCoord;
-    }
-};
 
 
 enum class QueueFamily {
@@ -1444,26 +1394,5 @@ namespace vk {
     };
 }
 
-
-class Model {
-private:
-    std::vector<Vertex> m_Vertices;
-    std::vector<VertexIndex> m_Indices;
-
-public:
-    explicit Model(const char *filepath);
-
-    auto Vertices() -> const Vertex * { return m_Vertices.data(); }
-
-    auto Indices() -> const VertexIndex * { return m_Indices.data(); }
-
-    auto VertexDataSize() -> VkDeviceSize { return sizeof(Vertex) * m_Vertices.size(); }
-
-    auto IndexDataSize() -> VkDeviceSize { return sizeof(VertexIndex) * m_Indices.size(); }
-
-    auto IndexCount() -> size_t { return m_Indices.size(); }
-
-    auto VertexCount() -> size_t { return m_Vertices.size(); }
-};
 
 #endif //VULKAN_VULKAN_WRAPPERS_H

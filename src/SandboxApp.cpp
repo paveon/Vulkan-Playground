@@ -4,7 +4,6 @@
 #include <fstream>
 #include <Engine/Include/Engine.h>
 #include <Platform/Vulkan/GraphicsContextVk.h>
-#include <Engine/Renderer/Renderer.h>
 
 struct UniformBufferObject {
     alignas(16) math::mat4 model;
@@ -109,13 +108,10 @@ public:
 //                                              true);
 
         /* Create vertex and index buffers */
-        m_Model = std::make_unique<Model>(MODEL_PATH);
-        m_VertexBuffer = VertexBuffer::Create();
-        m_IndexBuffer = IndexBuffer::Create();
-        m_VertexBuffer->StageData(m_Model->Vertices(), m_Model->VertexDataSize(), m_Model->VertexCount());
-        m_IndexBuffer->StageData(m_Model->Indices(), m_Model->IndexDataSize(), m_Model->IndexCount());
-
-        m_Mesh = std::make_shared<Mesh>(std::move(m_VertexBuffer), std::move(m_IndexBuffer));
+//        m_VertexBuffer = VertexBuffer::Create();
+//        m_IndexBuffer = IndexBuffer::Create();
+//        m_VertexBuffer->StageData(m_Model->Vertices(), m_Model->VertexDataSize(), m_Model->VertexCount());
+//        m_IndexBuffer->StageData(m_Model->Indices(), m_Model->IndexDataSize(), m_Model->IndexCount());
 
         m_Texture = Texture2D::Create(TEXTURE_PATH);
         m_Texture->Upload();
@@ -123,7 +119,15 @@ public:
         m_UniformBuffer = UniformBuffer::Create(sizeof(UniformBufferObject));
         m_Material->BindUniformBuffer(m_UniformBuffer, 0);
         m_Material->BindTexture(m_Texture, 1);
+
+        m_Mesh = std::make_shared<Mesh>(MODEL_PATH);
         m_Mesh->SetMaterial(m_Material);
+        m_Mesh->StageData();
+        Renderer::FlushStagedData();
+//        m_Mesh = std::make_shared<Mesh>(std::move(m_VertexBuffer), std::move(m_IndexBuffer));
+
+//        m_Model = std::make_unique<Model>();
+//        m_Model->AttachMesh(m_Mesh);
 
 //        m_GraphicsPipeline->BindUniformBuffer(*m_UniformBuffer, 0);
 //        m_GraphicsPipeline->BindTexture(*m_Texture, 1);
@@ -149,6 +153,21 @@ public:
 
         m_Camera->SetAspectRatio(e.Width() / (float) e.Height());
         m_UBO.proj = m_Camera->GetProjection();
+
+        Renderer::SubmitCommand(RenderCommand::SetViewport(Viewport{
+                0.0f,
+                0.0f,
+                static_cast<float>(e.Width()),
+                static_cast<float>(e.Height()),
+                0.0f,
+                1.0f
+        }));
+        Renderer::SubmitCommand(RenderCommand::SetScissor(Scissor{
+                0,
+                0,
+                e.Width(),
+                e.Height()
+        }));
         return true;
     }
 

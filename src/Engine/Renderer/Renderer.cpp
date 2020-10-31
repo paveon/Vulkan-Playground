@@ -13,10 +13,11 @@ void Renderer::BeginScene(const std::shared_ptr<PerspectiveCamera> &camera) {
 void Renderer::EndScene() {
     Scene &scene(s_Renderer->m_Scene);
     for (const auto &mesh : scene.m_Meshes) {
-        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindVertexBuffer(&mesh->VertexBuffer(), 0));
-        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindIndexBuffer(&mesh->IndexBuffer(), 0));
+//        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindVertexBuffer(&mesh->VertexBuffer(), 0));
+//        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindIndexBuffer(&mesh->IndexBuffer(), 0));
+        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindMesh(mesh.get()));
         s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindMaterial(&mesh->GetMaterial()));
-        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::DrawIndexed(mesh->IndexBuffer().IndexCount(), 0, 0));
+        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::DrawIndexed(mesh->IndexCount(), 0, 0));
     }
 //    RenderCommand::DrawIndexed(mesh.VertexBuffer(), mesh.IndexBuffer());
 }

@@ -10,7 +10,9 @@
 #include <Engine/KeyCodes.h>
 #include <Engine/MouseButtonCodes.h>
 #include <Engine/Timestep.h>
+#include <Engine/Model.h>
 
+#include <Engine/Renderer/Renderer.h>
 #include <Engine/Renderer/ShaderProgram.h>
 #include <Engine/Renderer/VertexBuffer.h>
 #include <Engine/Renderer/IndexBuffer.h>

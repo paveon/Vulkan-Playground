@@ -2,6 +2,9 @@
 
 #include <iostream>
 #include <set>
+#include <sstream>
+#include <algorithm>
+#include <numeric>
 
 using namespace vk;
 
@@ -93,6 +96,23 @@ void Device::Release() {
 }
 
 
+auto RingStageBuffer::PopMetadata() -> RingStageBuffer::DataInfo {
+    DataInfo info = m_Metadata.front();
+    if ((m_StartOffset + info.dataSize) >= m_Size) {
+        m_StartOffset = (m_StartOffset + info.dataSize) - m_Size;
+    } else {
+        m_StartOffset += info.dataSize;
+    }
+    m_Metadata.pop();
+    if (m_Metadata.empty()) {
+        m_StartOffset = 0;
+        m_EndOffset = 0;
+    }
+
+    return info;
+}
+
+
 void RingStageBuffer::Allocate(VkDeviceSize size) {
     if (m_Memory) {
         if (size > m_Size) {
@@ -138,33 +158,89 @@ void RingStageBuffer::Allocate(VkDeviceSize size) {
     }
 }
 
-void RingStageBuffer::StageData(vk::Buffer **dstHandlePtr,
-                                VkDeviceSize *dstOffsetHandlePtr,
-                                const void *data,
-                                VkDeviceSize dataSize) {
-    VkDeviceSize freeSpace = m_EndOffset > m_StartOffset ?
-                             m_Size + m_StartOffset - m_EndOffset : m_Size - m_StartOffset + m_EndOffset;
 
-    if (dataSize >= freeSpace)
+//void RingStageBuffer::StageData(vk::Buffer **dstHandlePtr,
+//                                VkDeviceSize *dstOffsetHandlePtr,
+//                                const void *data,
+//                                VkDeviceSize dataSize) {
+//    VkDeviceSize freeSpace = m_EndOffset > m_StartOffset ?
+//                             m_Size + m_StartOffset - m_EndOffset : m_Size - m_StartOffset + m_EndOffset;
+//
+//    if (dataSize >= FreeSpace())
+//        throw std::runtime_error("[RingStageBuffer] Not enough free space");
+//
+//    m_Metadata.push(DataInfo{
+//            {},
+//            m_EndOffset,
+//            dataSize,
+//            DataType::MESH_DATA,
+//            0
+//    });
+//
+//    if (m_EndOffset + dataSize > m_Size) {
+//        void *bufferPtr = (uint8_t *) m_Memory->m_Mapped + m_EndOffset;
+//        const void *dataPtr = data;
+//        VkDeviceSize chunkSize = m_Size - m_EndOffset;
+//        std::memcpy(bufferPtr, dataPtr, chunkSize);
+//        dataPtr = (uint8_t *) dataPtr + chunkSize;
+//        m_EndOffset = dataSize - chunkSize;
+//        std::memcpy(m_Memory->m_Mapped, dataPtr, m_EndOffset);
+//    } else {
+//        std::memcpy((uint8_t *) m_Memory->m_Mapped + m_EndOffset, data, dataSize);
+//        m_EndOffset += dataSize;
+//    }
+//}
+
+
+void RingStageBuffer::StageMesh(const Mesh* mesh) {
+    VkDeviceSize dataSize = mesh->VertexDataSize() + mesh->IndexDataSize();
+    if (dataSize >= FreeSpace())
         throw std::runtime_error("[RingStageBuffer] Not enough free space");
 
     m_Metadata.push(DataInfo{
-            dstHandlePtr,
-            dstOffsetHandlePtr,
+            {},
             m_EndOffset,
-            dataSize
+            dataSize,
+            DataType::MESH_DATA,
+            mesh->m_ResourceID
     });
-
+    std::vector<VkBufferCopy> &regions = m_Metadata.back().copyRegions;
     if (m_EndOffset + dataSize > m_Size) {
-        void *bufferPtr = (uint8_t *) m_Memory->m_Mapped + m_EndOffset;
-        const void *dataPtr = data;
+        uint8_t *bufferPtr = (uint8_t *) m_Memory->m_Mapped + m_EndOffset;
         VkDeviceSize chunkSize = m_Size - m_EndOffset;
-        std::memcpy(bufferPtr, dataPtr, chunkSize);
-        dataPtr = (uint8_t *) dataPtr + chunkSize;
-        m_EndOffset = dataSize - chunkSize;
-        std::memcpy(m_Memory->m_Mapped, dataPtr, m_EndOffset);
+
+        regions.emplace_back(VkBufferCopy{m_EndOffset, 0, chunkSize});
+        regions.emplace_back(VkBufferCopy{0, 0, dataSize - chunkSize});
+
+        if (chunkSize > mesh->VertexDataSize()) {
+            std::memcpy(bufferPtr, mesh->Vertices(), mesh->VertexDataSize());
+            bufferPtr += mesh->VertexDataSize();
+            std::memcpy(bufferPtr, mesh->Indices(), chunkSize - mesh->VertexDataSize());
+            uint8_t *dataPtr = (uint8_t *) mesh->Indices() + (chunkSize - mesh->VertexDataSize());
+            m_EndOffset = dataSize - chunkSize;
+            assert(m_EndOffset == (mesh->IndexDataSize() - (chunkSize - mesh->VertexDataSize())));
+            std::memcpy(m_Memory->m_Mapped, dataPtr, m_EndOffset);
+        } else if (chunkSize < mesh->VertexDataSize()) {
+            std::memcpy(bufferPtr, mesh->Vertices(), chunkSize);
+            uint8_t *dataPtr = (uint8_t *) mesh->Vertices() + chunkSize;
+            m_EndOffset = dataSize - chunkSize;
+            assert(m_EndOffset == (mesh->VertexDataSize() - chunkSize) + mesh->IndexDataSize());
+            bufferPtr = (uint8_t *) m_Memory->m_Mapped;
+            std::memcpy(bufferPtr, dataPtr, mesh->VertexDataSize() - chunkSize);
+            bufferPtr += (mesh->VertexDataSize() - chunkSize);
+            std::memcpy(bufferPtr, mesh->Indices(), mesh->IndexDataSize());
+        } else {
+            std::memcpy(bufferPtr, mesh->Vertices(), chunkSize);
+            m_EndOffset = dataSize - chunkSize;
+            assert(m_EndOffset == mesh->IndexDataSize());
+            std::memcpy(m_Memory->m_Mapped, mesh->Indices(), m_EndOffset);
+        }
     } else {
-        std::memcpy((uint8_t*)m_Memory->m_Mapped + m_EndOffset, data, dataSize);
+        regions.emplace_back(VkBufferCopy{m_EndOffset, 0, dataSize});
+        uint8_t *bufferPtr = (uint8_t *) m_Memory->m_Mapped + m_EndOffset;
+        std::memcpy(bufferPtr, mesh->Vertices(), mesh->VertexDataSize());
+        bufferPtr += mesh->VertexDataSize();
+        std::memcpy(bufferPtr, mesh->Indices(), mesh->IndexDataSize());
         m_EndOffset += dataSize;
     }
 }
@@ -177,9 +253,64 @@ void DeviceBuffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage) {
 
     VkMemoryRequirements memRequirements;
     vkGetBufferMemoryRequirements(*m_Device, m_Buffer.data(), &memRequirements);
-    auto memoryTypeIdx = m_Device->getMemoryType(
-            memRequirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    auto memoryTypeIdx = m_Device->getMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     m_BufferMemory = vk::DeviceMemory(*m_Device, memoryTypeIdx, size);
     m_Buffer.BindMemory(m_BufferMemory.data(), 0);
+    m_SubAllocations.emplace_back(Metadata{0, size, true});
+}
+
+
+VkBufferCopy DeviceBuffer::TransferData(const vk::CommandBuffer &cmdBuffer,
+                                        const RingStageBuffer &stageBuffer,
+                                        std::vector<VkBufferCopy> &copyRegions) {
+    assert(!copyRegions.empty());
+
+    size_t bytes = std::accumulate(copyRegions.begin(), copyRegions.end(), 0,
+                                   [](const size_t &x, const VkBufferCopy &y) {
+                                       return x + y.size;
+                                   });
+
+    /// Find bestfit block
+    auto bestfitIt = m_SubAllocations.end();
+    for (auto it = m_SubAllocations.begin(); it != m_SubAllocations.end(); ++it) {
+        if (it->free && it->size >= bytes) {
+            if (bestfitIt != m_SubAllocations.end()) {
+                if (it->size < bestfitIt->size) bestfitIt = it;
+            } else {
+                bestfitIt = it;
+            }
+        }
+    }
+
+    if (bestfitIt == m_SubAllocations.end()) {
+        std::ostringstream msg;
+        msg << "[DeviceBuffer (" << m_Buffer.ptr() << ")] Not enough free space";
+        throw std::runtime_error(msg.str().c_str());
+    }
+
+    if (bestfitIt->size > bytes) {
+        bestfitIt = m_SubAllocations.emplace(bestfitIt + 1, Metadata{
+                bestfitIt->offset + bytes,
+                bestfitIt->size - bytes,
+                true
+        });
+        bestfitIt--;
+    }
+    bestfitIt->free = false;
+    bestfitIt->size = bytes;
+
+    for (auto& region : copyRegions) {
+        region.dstOffset += bestfitIt->offset;
+    }
+    vkCmdCopyBuffer(cmdBuffer.data(),
+                    stageBuffer.buffer(),
+                    m_Buffer.data(),
+                    copyRegions.size(),
+                    copyRegions.data());
+
+    return VkBufferCopy{
+        copyRegions[0].srcOffset,
+        bestfitIt->offset,
+        bestfitIt->size
+    };
 }

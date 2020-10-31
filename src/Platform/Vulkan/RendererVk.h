@@ -4,6 +4,7 @@
 #include <memory>
 #include <array>
 #include <iostream>
+#include <unordered_map>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -18,13 +19,18 @@
 #include "Engine/Renderer/Device.h"
 #include "Platform/Vulkan/GraphicsContextVk.h"
 #include "Engine/Renderer/RenderPass.h"
-#include "Engine/Renderer/Pipeline.h"
 #include "ImGuiLayerVk.h"
 
 
 class WindowResizeEvent;
 
 class RendererVk : public Renderer {
+    struct MeshAllocationMetadata {
+        DeviceBuffer* buffer = nullptr;
+        VkDeviceSize startOffset = 0;
+    };
+
+
 public:
     explicit RendererVk();
 
@@ -48,8 +54,15 @@ public:
 
     auto impl_GetImageIndex() const -> size_t override { return m_ImageIndex; }
 
-    void impl_StageData(void* dstBuffer, uint64_t* dstOffset, const void *data, uint64_t bytes) override {
-        m_StageBuffer.StageData(static_cast<vk::Buffer **>(dstBuffer), dstOffset, data, bytes);
+//    void impl_StageData(void* dstBuffer, uint64_t* dstOffset, const void *data, uint64_t bytes) override {
+//        m_StageBuffer.StageData(static_cast<vk::Buffer **>(dstBuffer), dstOffset, data, bytes);
+//    }
+
+    void impl_StageMesh(Mesh* mesh) override {
+        /// TODO: will break when mesh is released
+        mesh->m_ResourceID = m_MeshAllocations.size();
+        m_MeshAllocations[mesh->m_ResourceID] = MeshAllocationMetadata();
+        m_StageBuffer.StageMesh(mesh);
     }
 
     void impl_FlushStagedData() override;
@@ -64,8 +77,10 @@ private:
     GfxContextVk& m_Context;
     Device& m_Device;
 
+    /// TODO: Create some basic device memory management system and maybe a streaming system later?
+    std::unordered_map<size_t, MeshAllocationMetadata> m_MeshAllocations;
     RingStageBuffer m_StageBuffer;
-    DeviceBuffer m_DataBuffer;
+    DeviceBuffer m_MeshDeviceBuffer;
 
     vk::CommandPool* m_GfxCmdPool;
     vk::CommandPool* m_TransferCmdPool;

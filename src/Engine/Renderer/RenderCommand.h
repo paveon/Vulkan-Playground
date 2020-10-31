@@ -4,6 +4,7 @@
 #include <cstring>
 #include "RendererAPI.h"
 #include "Material.h"
+#include "Mesh.h"
 
 struct Viewport {
     float x = 0.0f;
@@ -56,7 +57,8 @@ struct RenderCommand {
         DRAW_INDEXED,
         BIND_VERTEX_BUFFER,
         BIND_INDEX_BUFFER,
-        BIND_MATERIAL
+        BIND_MATERIAL,
+        BIND_MESH,
     };
 
     Type m_Type = Type::NONE;
@@ -75,48 +77,6 @@ struct RenderCommand {
         std::memcpy(&data, m_Payload, sizeof(T));
         return data;
     }
-
-//    auto UnpackSetClearColor() -> math::vec4 {
-//        assert(m_Type == Type::SET_CLEAR_COLOR);
-//        math::vec4 color;
-//        std::memcpy(&color, m_Payload, sizeof(math::vec4));
-//        return color;
-//    }
-//
-//    auto UnpackSetViewport() -> Viewport {
-//        assert(m_Type == Type::SET_VIEWPORT);
-//        Viewport viewport;
-//        std::memcpy(&viewport, m_Payload, sizeof(Viewport));
-//        return viewport;
-//    }
-//
-//    auto UnpackBindVertexBuffer() -> BindVertexBufferPayload {
-//        assert(m_Type == Type::BIND_VERTEX_BUFFER);
-//        BindVertexBufferPayload payload{};
-//        std::memcpy(&payload, m_Payload, sizeof(BindVertexBufferPayload));
-//        return payload;
-//    }
-//
-//    auto UnpackBindIndexBuffer() -> BindIndexBufferPayload {
-//        assert(m_Type == Type::BIND_INDEX_BUFFER);
-//        BindIndexBufferPayload payload{};
-//        std::memcpy(&payload, m_Payload, sizeof(BindIndexBufferPayload));
-//        return payload;
-//    }
-//
-//    auto UnpackBindMaterial() -> const Material * {
-//        assert(m_Type == Type::BIND_MATERIAL);
-//        const Material *materialPtr{};
-//        std::memcpy(&materialPtr, m_Payload, sizeof(void *));
-//        return materialPtr;
-//    }
-//
-//    auto UnpackDrawIndexed() -> DrawIndexedPayload {
-//        assert(m_Type == Type::DRAW_INDEXED);
-//        DrawIndexedPayload payload;
-//        std::memcpy(&payload, m_Payload, sizeof(DrawIndexedPayload));
-//        return payload;
-//    }
 
     static auto SetClearColor(const math::vec4 &color) -> RenderCommand {
         return RenderCommand(Type::SET_CLEAR_COLOR, sizeof(math::vec4), color.data);
@@ -150,6 +110,10 @@ struct RenderCommand {
 
     static auto BindMaterial(const Material *material) -> RenderCommand {
         return RenderCommand(Type::BIND_MATERIAL, sizeof(void *), &material);
+    }
+
+    static auto BindMesh(const Mesh *mesh) -> RenderCommand {
+        return RenderCommand(Type::BIND_MESH, sizeof(void *), &mesh);
     }
 
     static auto DrawIndexed(uint32_t indexCount, uint32_t firstIndex, int32_t vertexOffset) -> RenderCommand {

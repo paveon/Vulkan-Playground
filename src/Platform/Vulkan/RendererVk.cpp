@@ -18,8 +18,9 @@ RendererVk::RendererVk() :
         m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
         m_Device(m_Context.GetDevice()),
         m_StageBuffer(&m_Device, 1000'000'00),
-        m_DataBuffer(&m_Device, 1000'000'00,
-                     VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
+        m_MeshDeviceBuffer(&m_Device, 1000'000'00,
+                           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
+
     vk::Swapchain &swapchain(m_Context.Swapchain());
     auto extent = swapchain.Extent();
     auto imgFormat = swapchain.ImageFormat();
@@ -211,6 +212,24 @@ void RendererVk::DrawFrame() {
                 material->GetPipeline().Bind(primaryCmdBuffer.data(), m_ImageIndex);
                 break;
             }
+            case RenderCommand::Type::BIND_MESH: {
+                auto *mesh = cmd->UnpackData<Mesh *>();
+                auto it = m_MeshAllocations.find(mesh->m_ResourceID);
+                if (it == m_MeshAllocations.end())
+                    assert(false);
+                const auto& meshInfo = it->second;
+                vkCmdBindVertexBuffers(primaryCmdBuffer.data(),
+                                       0,
+                                       1,
+                                       meshInfo.buffer->bufferPtr(),
+                                       &meshInfo.startOffset);
+
+                vkCmdBindIndexBuffer(primaryCmdBuffer.data(),
+                                     meshInfo.buffer->buffer(),
+                                     meshInfo.startOffset + mesh->VertexDataSize(),
+                                     VK_INDEX_TYPE_UINT32);
+                break;
+            }
             case RenderCommand::Type::DRAW_INDEXED: {
                 auto payload = cmd->UnpackData<DrawIndexedPayload>();
                 vkCmdDrawIndexed(primaryCmdBuffer.data(),
@@ -285,74 +304,96 @@ void RendererVk::impl_WaitIdle() const {
 }
 
 void RendererVk::impl_FlushStagedData() {
-//    vkCmdCopyBuffer(cmdBuffer, srcBuffer.data(), dstBuffer.data(), copyRegions.size(), copyRegions.data());
+    /// TODO: sort by data type and distribute into multiple device buffers, etc...
 
+    std::array<VkBufferMemoryBarrier, 1> bufferBarriers = {};
+    vk::Semaphore transferSemaphore(m_Device);
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-//    std::array<VkBufferMemoryBarrier, 1> bufferBarriers = {};
-//    vk::Semaphore transferSemaphore(m_Device);
-//    VkSubmitInfo submitInfo = {};
-//    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-//
-//    vk::CommandBuffers transferCmdBuffers(m_Device, m_Device.TransferPool()->data());
-//    {
-//
-//        vk::CommandBuffer transferCmdBuffer = transferCmdBuffers[0];
-//        transferCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-//
-//        auto usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-//        m_Buffer = DeviceBuffer(&m_Device, data, bytes, transferCmdBuffer, usage);
-//
-//        bufferBarriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-//        bufferBarriers[0].srcQueueFamilyIndex = m_Device.queueIndex(QueueFamily::TRANSFER);
-//        bufferBarriers[0].dstQueueFamilyIndex = m_Device.queueIndex(QueueFamily::GRAPHICS);
-////        bufferBarriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    {
+        vk::CommandBuffer transferCmdBuffer(m_TransferCmdBuffers->get(m_ImageIndex));
+        transferCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+        auto copyRegions = m_StageBuffer.CopyRegions();
+        VkBufferCopy dstRegion = m_MeshDeviceBuffer.TransferData(transferCmdBuffer, m_StageBuffer, copyRegions);
+
+        VkDeviceSize dstSubDataOffset = dstRegion.dstOffset;
+        while (!m_StageBuffer.IsEmpty()) {
+            RingStageBuffer::DataInfo metadata = m_StageBuffer.PopMetadata();
+            switch (metadata.dataType) {
+                case RingStageBuffer::DataType::MESH_DATA: {
+                    auto it = m_MeshAllocations.find(metadata.resourceID);
+                    if (it == m_MeshAllocations.end())
+                        assert(false);
+
+                    MeshAllocationMetadata& meshAllocInfo = it->second;
+                    meshAllocInfo.buffer = &m_MeshDeviceBuffer;
+                    meshAllocInfo.startOffset = dstSubDataOffset;
+                    break;
+                }
+
+                case RingStageBuffer::DataType::TEXTURE_DATA:
+                    assert(false);
+                    break;
+
+                default:
+                    assert(false);
+                    break;
+            }
+            dstSubDataOffset += metadata.dataSize;
+        }
+
+        bufferBarriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        bufferBarriers[0].srcQueueFamilyIndex = m_Device.queueIndex(QueueFamily::TRANSFER);
+        bufferBarriers[0].dstQueueFamilyIndex = m_Device.queueIndex(QueueFamily::GRAPHICS);
 //        bufferBarriers[0].srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-//        bufferBarriers[0].dstAccessMask = 0;
-//        bufferBarriers[0].buffer = m_Buffer.data().data();
-//        bufferBarriers[0].size = m_Buffer.size();
-//        bufferBarriers[0].offset = 0;
-//
-//        vkCmdPipelineBarrier(transferCmdBuffer.data(),
-//                             VK_PIPELINE_STAGE_TRANSFER_BIT,
-//                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
-//                             0, nullptr,
-//                             bufferBarriers.size(), bufferBarriers.data(),
-//                             0, nullptr
-//        );
-//
-//        transferCmdBuffer.End();
-//
-//        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-//        submitInfo.signalSemaphoreCount = 1;
-//        submitInfo.pSignalSemaphores = transferSemaphore.ptr();
-//        transferCmdBuffer.Submit(submitInfo, m_Device.queue(QueueFamily::TRANSFER));
-//    }
-//
-//    /* Acquisition phase */
-//    {
-//        vk::CommandBuffers cmds(m_Device, m_Device.GfxPool()->data());
-//        vk::CommandBuffer gfxCmdBuffer = cmds[0];
-//        gfxCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-//
-//        bufferBarriers[0].srcAccessMask = 0;
-//        bufferBarriers[0].dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-//        vkCmdPipelineBarrier(gfxCmdBuffer.data(),
-//                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-//                             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0,
-//                             0, nullptr,
-//                             bufferBarriers.size(), bufferBarriers.data(),
-//                             0, nullptr
-//        );
-//
-//        gfxCmdBuffer.End();
-//
-//        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-//        submitInfo.waitSemaphoreCount = 1;
-//        submitInfo.pWaitSemaphores = transferSemaphore.ptr();
-//        submitInfo.pWaitDstStageMask = &waitStage;
-//        gfxCmdBuffer.Submit(submitInfo, m_Device.queue(QueueFamily::GRAPHICS));
-//
-//        vkQueueWaitIdle(m_Device.queue(QueueFamily::GRAPHICS));
-//    }
+        bufferBarriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        bufferBarriers[0].dstAccessMask = 0;
+        bufferBarriers[0].buffer = m_MeshDeviceBuffer.buffer();
+        bufferBarriers[0].size = dstRegion.size;
+        bufferBarriers[0].offset = dstRegion.dstOffset;
+
+        vkCmdPipelineBarrier(transferCmdBuffer.data(),
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
+                             0, nullptr,
+                             bufferBarriers.size(), bufferBarriers.data(),
+                             0, nullptr
+        );
+
+        transferCmdBuffer.End();
+
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = transferSemaphore.ptr();
+        transferCmdBuffer.Submit(submitInfo, m_Device.queue(QueueFamily::TRANSFER));
+    }
+
+    /* Acquisition phase */
+    {
+        vk::CommandBuffer gfxCmdBuffer(m_GfxCmdBuffers->get(m_ImageIndex));
+        gfxCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+        bufferBarriers[0].srcAccessMask = 0;
+        bufferBarriers[0].dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        vkCmdPipelineBarrier(gfxCmdBuffer.data(),
+                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0,
+                             0, nullptr,
+                             bufferBarriers.size(), bufferBarriers.data(),
+                             0, nullptr
+        );
+
+        gfxCmdBuffer.End();
+
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = transferSemaphore.ptr();
+        submitInfo.pWaitDstStageMask = &waitStage;
+        gfxCmdBuffer.Submit(submitInfo, m_Device.queue(QueueFamily::GRAPHICS));
+
+        vkQueueWaitIdle(m_Device.queue(QueueFamily::GRAPHICS));
+    }
 }
 

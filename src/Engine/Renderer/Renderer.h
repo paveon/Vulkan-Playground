@@ -46,7 +46,9 @@ protected:
 
     virtual auto impl_GetImageIndex() const -> size_t = 0;
 
-    virtual void impl_StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) = 0;
+//    virtual void impl_StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) = 0;
+
+    virtual void impl_StageMesh(Mesh* mesh) = 0;
 
     virtual void impl_FlushStagedData() = 0;
 
@@ -74,8 +76,12 @@ public:
 
     static void SubmitMesh(const std::shared_ptr<Mesh> &mesh);
 
-    static void StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) {
-        s_Renderer->impl_StageData(dstBufferHandle, dstOffsetHandle, data, bytes);
+//    static void StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) {
+//        s_Renderer->impl_StageData(dstBufferHandle, dstOffsetHandle, data, bytes);
+//    }
+
+    static void StageMesh(Mesh* mesh) {
+        s_Renderer->impl_StageMesh(mesh);
     }
 
     static void FlushStagedData() { s_Renderer->impl_FlushStagedData(); }

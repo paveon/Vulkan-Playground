@@ -75,6 +75,6 @@ void IndexBufferVk::UploadData(const void *data, uint64_t bytes, uint64_t indexC
 }
 
 void IndexBufferVk::StageData(const void *data, uint64_t bytes, uint64_t indexCount) {
-    m_IndexCount = indexCount;
-    Renderer::StageData(&m_BufferHandle, &m_BufferOffset, data, bytes);
+//    m_IndexCount = indexCount;
+//    Renderer::StageData(&m_BufferHandle, &m_BufferOffset, data, bytes);
 }

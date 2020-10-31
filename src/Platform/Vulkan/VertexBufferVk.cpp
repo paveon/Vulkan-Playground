@@ -78,8 +78,8 @@ void VertexBufferVk::UploadData(const void *data, uint64_t bytes, uint64_t verte
 }
 
 void VertexBufferVk::StageData(const void *data, uint64_t bytes, uint64_t vertexCount) {
-    m_VertexCount = vertexCount;
-    Renderer::StageData(&m_BufferHandle, &m_BufferOffset, data, bytes);
+//    m_VertexCount = vertexCount;
+//    Renderer::StageData(&m_BufferHandle, &m_BufferOffset, data, bytes);
 }
 
 
