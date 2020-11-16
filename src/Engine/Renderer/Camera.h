@@ -3,39 +3,44 @@
 
 #include <mathlib.h>
 #include <iostream>
+#include <glm/matrix.hpp>
+#include <glm/common.hpp>
+#include <glm/glm.hpp>
+#include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 
 // TODO: create more sensible camera hierarchy with different camera types such as free/lookAt, etc.
 class Camera {
 protected:
-    math::mat4 m_Projection;
-    math::mat4 m_View;
-    math::vec3 m_Position;
-    math::vec3 m_Direction;
-    math::vec3 m_Up;
-    math::vec3 m_Right;
+    glm::mat4 m_Projection;
+    glm::mat4 m_View;
+    glm::vec3 m_Position;
+    glm::vec3 m_Direction;
+    glm::vec3 m_Up;
+    glm::vec3 m_Right;
     float m_Yaw = -HALF_PI_F;
     float m_Pitch = 0.0f;
 
     Camera() = default;
 
-    Camera(const math::mat4 &projection,
-           const math::mat4 &view,
-           const math::vec3 &position,
-           const math::vec3 &direction) :
+    Camera(const glm::mat4 &projection,
+           const glm::mat4 &view,
+           const glm::vec3 &position,
+           const glm::vec3 &direction) :
             m_Projection(projection),
             m_View(view),
             m_Position(position),
-            m_Direction(math::normalize(direction)),
+            m_Direction(glm::normalize(direction)),
             m_Up(0.0f, 0.0f, 1.0f),
-            m_Right(math::normalize(math::cross(m_Direction, m_Up))),
+            m_Right(glm::normalize(glm::cross(m_Direction, m_Up))),
             m_Yaw(std::atan2(m_Direction.y, m_Direction.x)) {
         
-        m_Projection[1][1] *= -1;
+//        m_Projection[1][1] *= -1;
     };
 
     void CalculateDirection() {
-        SetDirection(math::vec3(
+        SetDirection(glm::vec3(
                 std::cos(m_Yaw) * std::cos(m_Pitch),
                 std::sin(m_Yaw) * std::cos(m_Pitch),
                 std::sin(m_Pitch)
@@ -43,32 +48,36 @@ protected:
     }
 
 public:
-    auto GetProjection() const -> const math::mat4 & { return m_Projection; }
+    auto GetProjection() const -> const glm::mat4 & { return m_Projection; }
 
-    auto GetView() const -> const math::mat4 & { return m_View; }
+    auto GetView() const -> const glm::mat4 & { return m_View; }
 
-    void SetPosition(const math::vec3 &position) {
+    auto GetProjectionView() const -> glm::mat4 { return m_Projection * m_View; }
+
+    void SetPosition(const glm::vec3 &position) {
         m_Position = position;
-        m_View = math::lookAt(m_Position, m_Position + m_Direction, m_Up);
+        m_View = glm::lookAt(m_Position, m_Position + m_Direction, m_Up);
     }
 
-    void Move(const math::vec3 &delta) { SetPosition(m_Position + delta); }
+    void Move(const glm::vec3 &delta) { SetPosition(m_Position + delta); }
 
-    void MoveX(float delta) { SetPosition(m_Position + math::vec3(delta, 0.0f, 0.0f)); }
+    void MoveX(float delta) { SetPosition(m_Position + glm::vec3(delta, 0.0f, 0.0f)); }
 
-    void MoveY(float delta) { SetPosition(m_Position + math::vec3(0.0f, delta, 0.0f)); }
+    void MoveY(float delta) { SetPosition(m_Position + glm::vec3(0.0f, delta, 0.0f)); }
 
-    void MoveZ(float delta) { SetPosition(m_Position + math::vec3(0.0f, 0.0f, delta)); }
+    void MoveZ(float delta) { SetPosition(m_Position + glm::vec3(0.0f, 0.0f, delta)); }
 
     void MoveInDirection(float delta) { SetPosition(m_Position + (m_Direction * delta)); }
 
     void MoveSideways(float delta) { SetPosition(m_Position + (m_Right * delta)); }
 
-    void SetDirection(const math::vec3 &direction) {
-        m_Direction = math::normalize(direction);
-        m_Right = math::normalize(math::cross(m_Direction, m_Up));
-        m_View = math::lookAt(m_Position, m_Position + m_Direction, m_Up);
+    void SetDirection(const glm::vec3 &direction) {
+        m_Direction = glm::normalize(direction);
+        m_Right = glm::normalize(glm::cross(m_Direction, m_Up));
+        m_View = glm::lookAt(m_Position, m_Position + m_Direction, m_Up);
     }
+
+    auto GetDirection() -> const glm::vec3& { return m_Direction; }
 
     void ChangeYawPitch(float yawDelta, float pitchDelta) {
         m_Yaw += yawDelta;
@@ -90,7 +99,7 @@ public:
 
     void ChangeYaw(float delta) { ChangeYawPitch(delta, 0.0f); }
 
-    auto GetPosition() const -> const math::vec3 & { return m_Position; }
+    auto GetPosition() const -> const glm::vec3 & { return m_Position; }
 };
 
 
@@ -103,17 +112,17 @@ class PerspectiveCamera : public Camera {
 public:
     PerspectiveCamera() = default;
 
-    PerspectiveCamera(const math::vec3 &position,
-                      const math::vec3 &direction,
+    PerspectiveCamera(const glm::vec3 &position,
+                      const glm::vec3 &direction,
                       float aspectRatio,
                       float near,
                       float far,
                       float fov = math::radians(45.0f)) :
             Camera(
-                    math::perspective(fov, aspectRatio, near, far),
-                    math::lookAt(position,
+                    glm::perspective(fov, aspectRatio, near, far),
+                    glm::lookAt(position,
                                  direction,
-                                 math::vec3(0.0f, 0.0f, 1.0f)),
+                                glm::vec3(0.0f, 0.0f, 1.0f)),
                     position,
                     direction
             ),
@@ -124,16 +133,16 @@ public:
 
     void SetAspectRatio(float ratio) {
         m_AspectRatio = ratio;
-        m_Projection = math::perspective(m_FovY, m_AspectRatio, m_Near, m_Far);
-        m_Projection[1][1] *= -1;
+        m_Projection = glm::perspective(m_FovY, m_AspectRatio, m_Near, m_Far);
+//        m_Projection[1][1] *= -1;
     }
 
     auto GetAspectRatio() const -> float { return m_AspectRatio; }
 
     void SetFOV(float fov) {
         m_FovY = fov;
-        m_Projection = math::perspective(m_FovY, m_AspectRatio, m_Near, m_Far);
-        m_Projection[1][1] *= -1;
+        m_Projection = glm::perspective(m_FovY, m_AspectRatio, m_Near, m_Far);
+//        m_Projection[1][1] *= -1;
     }
 
     auto GetFOV() const -> float { return m_FovY; }

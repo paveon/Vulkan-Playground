@@ -2,27 +2,39 @@
 #define GAME_ENGINE_RENDERER_H
 
 #include <vector>
+#include <memory>
 #include <Engine/Events/WindowEvents.h>
+#include <unordered_set>
 #include "RendererAPI.h"
 #include "RenderCommand.h"
-#include "ShaderProgram.h"
-#include "Pipeline.h"
-#include "Material.h"
-#include "Mesh.h"
 
 
+class RenderPass;
+class Model;
+class ModelInstance;
+class Material;
 class PerspectiveCamera;
 
 class Scene {
 public:
-    std::vector<std::shared_ptr<Mesh>> m_Meshes;
+    std::vector<const Mesh*> m_Meshes;
+    std::vector<const Model*> m_Models;
+    std::unordered_set<const Model*> m_ModelSet;
+    std::unordered_set<Material*> m_MaterialSet;
+    std::vector<const ModelInstance*> m_ModelInstances;
     std::shared_ptr<PerspectiveCamera> m_Camera;
 
-    Scene() {
-    }
+    Scene() = default;
 };
 
+class Layer;
 class ImGuiLayer;
+
+struct BufferAllocation{
+    void* memory;
+    void* handle;
+    uint64_t offset;
+};
 
 class Renderer {
     friend class ImGuiLayer;
@@ -50,6 +62,8 @@ protected:
 
     virtual void impl_StageMesh(Mesh* mesh) = 0;
 
+    virtual BufferAllocation impl_AllocateUniformBuffer(uint64_t size) = 0;
+
     virtual void impl_FlushStagedData() = 0;
 
     virtual void impl_WaitIdle() const = 0;
@@ -74,14 +88,20 @@ public:
 
     static void EndScene();
 
-    static void SubmitMesh(const std::shared_ptr<Mesh> &mesh);
+    static void SubmitMesh(const Mesh* mesh);
+
+    static void SubmitModel(const Model* model);
+
+    static void SubmitModelInstance(const ModelInstance* instance);
 
 //    static void StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) {
 //        s_Renderer->impl_StageData(dstBufferHandle, dstOffsetHandle, data, bytes);
 //    }
 
-    static void StageMesh(Mesh* mesh) {
-        s_Renderer->impl_StageMesh(mesh);
+    static void StageMesh(Mesh* mesh) { s_Renderer->impl_StageMesh(mesh); }
+
+    static auto AllocateUniformBuffer(uint64_t size) -> BufferAllocation {
+        return s_Renderer->impl_AllocateUniformBuffer(size);
     }
 
     static void FlushStagedData() { s_Renderer->impl_FlushStagedData(); }
@@ -96,7 +116,7 @@ public:
 
     static auto GetImageIndex() -> size_t { return s_Renderer->impl_GetImageIndex(); }
 
-    static void SetImGuiLayer(ImGuiLayer* layer) { s_Renderer->m_ImGuiLayer = layer; }
+    static void SetImGuiLayer(Layer* layer);
 
     static void WaitIdle() { s_Renderer->impl_WaitIdle(); }
 };

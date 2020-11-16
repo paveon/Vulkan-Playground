@@ -7,21 +7,24 @@ class UniformBuffer {
 protected:
     UniformBuffer() = default;
 
-    size_t m_BufferSize = 0;
-    size_t m_ObjectSize = 0;
+    uint64_t m_BufferSize = 0;
+    uint32_t m_ObjectSize = 0;
+    uint32_t m_ObjectSizeAligned = 0;
 
 public:
     virtual ~UniformBuffer() = default;
 
-    auto ObjectSize() const -> size_t { return m_ObjectSize; }
+    auto ObjectSize() const -> auto { return m_ObjectSize; }
 
-    auto Size() const -> size_t { return m_BufferSize; }
+    auto ObjectSizeAligned() const -> auto { return m_ObjectSizeAligned; }
 
-    virtual auto VkHandle() const -> const void* { return nullptr; }
+    auto Size() const -> auto { return m_BufferSize; }
 
-    virtual void SetData(uint32_t imageIndex, const void *data) = 0;
+//    virtual auto VkHandle() const -> const void* { return nullptr; }
 
-    static auto Create(size_t objectByteSize) -> std::unique_ptr<UniformBuffer>;
+    virtual void SetData(const void *objectData, size_t objectCount) = 0;
+
+    static auto Create(size_t objectSize, size_t objectCount) -> std::unique_ptr<UniformBuffer>;
 };
 
 

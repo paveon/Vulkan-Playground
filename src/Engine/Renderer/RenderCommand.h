@@ -2,9 +2,12 @@
 #define GAME_ENGINE_RENDER_COMMAND_H
 
 #include <cstring>
+#include <cstdint>
+#include <glm/vec4.hpp>
+#include <stdexcept>
 #include "RendererAPI.h"
-#include "Material.h"
-#include "Mesh.h"
+//#include "Material.h"
+//#include "Mesh.h"
 
 struct Viewport {
     float x = 0.0f;
@@ -27,26 +30,39 @@ struct DepthStencil {
     uint32_t stencil;
 };
 
-struct BindVertexBufferPayload {
-    const VertexBuffer *vertexBuffer{};
-    uint64_t offset = 0;
+//struct BindVertexBufferPayload {
+//    const VertexBuffer *vertexBuffer{};
+//    uint64_t offset = 0;
+//};
+//
+//struct BindIndexBufferPayload {
+//    const IndexBuffer *indexBuffer{};
+//    uint64_t offset = 0;
+//};
+
+struct SetDynamicOffsetPayload {
+    uint32_t objectIndex;
 };
 
-struct BindIndexBufferPayload {
-    const IndexBuffer *indexBuffer{};
-    uint64_t offset = 0;
+struct DrawPayload {
+    uint32_t vertexCount = 0;
+    uint32_t instanceCount = 0;
+    uint32_t firstVertex = 0;
+    uint32_t firstInstance = 0;
 };
 
 struct DrawIndexedPayload {
     uint32_t indexCount = 0;
+    uint32_t instanceCount = 0;
     uint32_t firstIndex = 0;
     int32_t vertexOffset = 0;
+    uint32_t firstInstance = 0;
 };
 
+class Mesh;
+class Material;
 
 struct RenderCommand {
-    static std::unique_ptr<RendererAPI> s_API;
-
     enum class Type : uint8_t {
         NONE,
         SET_VIEWPORT,
@@ -54,11 +70,13 @@ struct RenderCommand {
         SET_CLEAR_COLOR,
         SET_DEPTH_STENCIL,
         CLEAR,
+        DRAW,
         DRAW_INDEXED,
-        BIND_VERTEX_BUFFER,
-        BIND_INDEX_BUFFER,
+//        BIND_VERTEX_BUFFER,
+//        BIND_INDEX_BUFFER,
         BIND_MATERIAL,
         BIND_MESH,
+        SET_UNIFORM_OFFSET,
     };
 
     Type m_Type = Type::NONE;
@@ -78,8 +96,8 @@ struct RenderCommand {
         return data;
     }
 
-    static auto SetClearColor(const math::vec4 &color) -> RenderCommand {
-        return RenderCommand(Type::SET_CLEAR_COLOR, sizeof(math::vec4), color.data);
+    static auto SetClearColor(const glm::vec4 &color) -> RenderCommand {
+        return RenderCommand(Type::SET_CLEAR_COLOR, sizeof(glm::vec4), &color);
     }
 
     static auto SetDepthStencil(const DepthStencil &depthStencil) -> RenderCommand {
@@ -98,15 +116,15 @@ struct RenderCommand {
         return RenderCommand(Type::CLEAR, 0, nullptr);
     }
 
-    static auto BindVertexBuffer(const VertexBuffer *vb, uint64_t offset) -> RenderCommand {
-        BindVertexBufferPayload payload{vb, offset};
-        return RenderCommand(Type::BIND_VERTEX_BUFFER, sizeof(BindVertexBufferPayload), &payload);
-    }
-
-    static auto BindIndexBuffer(const IndexBuffer *ib, uint64_t offset) -> RenderCommand {
-        BindIndexBufferPayload payload{ib, offset};
-        return RenderCommand(Type::BIND_INDEX_BUFFER, sizeof(BindIndexBufferPayload), &payload);
-    }
+//    static auto BindVertexBuffer(const VertexBuffer *vb, uint64_t offset) -> RenderCommand {
+//        BindVertexBufferPayload payload{vb, offset};
+//        return RenderCommand(Type::BIND_VERTEX_BUFFER, sizeof(BindVertexBufferPayload), &payload);
+//    }
+//
+//    static auto BindIndexBuffer(const IndexBuffer *ib, uint64_t offset) -> RenderCommand {
+//        BindIndexBufferPayload payload{ib, offset};
+//        return RenderCommand(Type::BIND_INDEX_BUFFER, sizeof(BindIndexBufferPayload), &payload);
+//    }
 
     static auto BindMaterial(const Material *material) -> RenderCommand {
         return RenderCommand(Type::BIND_MATERIAL, sizeof(void *), &material);
@@ -116,8 +134,18 @@ struct RenderCommand {
         return RenderCommand(Type::BIND_MESH, sizeof(void *), &mesh);
     }
 
-    static auto DrawIndexed(uint32_t indexCount, uint32_t firstIndex, int32_t vertexOffset) -> RenderCommand {
-        DrawIndexedPayload payload{indexCount, firstIndex, vertexOffset};
+    static auto SetDynamicOffset(uint32_t objectIndex) -> RenderCommand {
+        SetDynamicOffsetPayload payload{objectIndex};
+        return RenderCommand(Type::SET_UNIFORM_OFFSET, sizeof(SetDynamicOffsetPayload), &payload);
+    }
+
+    static auto Draw(const DrawPayload& payload) -> RenderCommand {
+//        DrawIndexedPayload payload{indexCount, firstIndex, vertexOffset};
+        return RenderCommand(Type::DRAW, sizeof(DrawPayload), &payload);
+    }
+
+    static auto DrawIndexed(const DrawIndexedPayload& payload) -> RenderCommand {
+//        DrawIndexedPayload payload{indexCount, firstIndex, vertexOffset};
         return RenderCommand(Type::DRAW_INDEXED, sizeof(DrawIndexedPayload), &payload);
     }
 };

@@ -35,9 +35,9 @@ void TerminateGLFW() {
 }
 
 auto CreateDebugUtilsMessengerEXT(VkInstance instance,
-                                      const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
-                                      const VkAllocationCallbacks *pAllocator,
-                                      VkDebugUtilsMessengerEXT *pDebugMessenger) -> VkResult {
+                                  const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
+                                  const VkAllocationCallbacks *pAllocator,
+                                  VkDebugUtilsMessengerEXT *pDebugMessenger) -> VkResult {
 
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
@@ -63,7 +63,7 @@ auto createDebugMsgInfo(PFN_vkDebugUtilsMessengerCallbackEXT callback,
                         void *data) -> VkDebugUtilsMessengerCreateInfoEXT {
     VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+    createInfo.messageSeverity =
                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
@@ -185,8 +185,7 @@ auto createVulkanInstance(const std::vector<const char *> &validationLayers) -> 
 
 auto readFile(const std::string &filename) -> std::vector<uint32_t> {
     FILE *file = fopen(filename.c_str(), "rb");
-    if (!file)
-    {
+    if (!file) {
         fprintf(stderr, "Failed to open SPIR-V file: %s\n", filename.c_str());
         return {};
     }

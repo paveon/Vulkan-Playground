@@ -161,7 +161,7 @@ void ImGuiLayerVk::InitResources() {
 //
 //    m_Pipeline = Pipeline::Create(renderPass, *vertexShader, *fragShader, vertexLayout, descriptorLayout, {pushBlock},
 //                                  false);
-//    m_Pipeline->BindTexture(*m_FontData, 0);
+//    m_Pipeline->BindTextures(*m_FontData, 0);
 //
 //    auto imgCount = gfxContext.Swapchain().ImageCount();
 //    m_VertexBuffers.resize(imgCount);
@@ -178,7 +178,6 @@ void ImGuiLayerVk::NewFrame() {
 }
 
 void ImGuiLayerVk::EndFrame() {
-    ImGui::ShowDemoWindow();
     ImGui::Render();
 
     ImGuiIO &io = ImGui::GetIO();

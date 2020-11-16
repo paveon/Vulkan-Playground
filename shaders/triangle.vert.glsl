@@ -1,24 +1,25 @@
 #version 450
-#extension GL_ARB_separate_shader_objects : enable
+#extension GL_EXT_scalar_block_layout : enable
 
 layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inColor;
+layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inTexCoord;
 
-layout(location = 0) out vec3 fragColor;
-layout(location = 1) out vec2 fragTexCoord;
+layout(location = 0) out vec3 Normal;
+layout(location = 1) out vec3 FragPos;
+layout(location = 2) out vec2 FragTexCoord;
 
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
-    mat4 view;
-    mat4 proj;
-} ubo;
+layout(std430, set=2, binding = 0) uniform ObjectData {
+    mat4 mvp;
+    mat4 viewModel;
+    mat4 normalMatrix;
+    vec3 color;
+    int materialIdx;
+} objectUBO;
 
 void main() {
-    //gl_Position = vec4(inPosition, 1.0) * ubo.model * ubo.view * ubo.proj;
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
-    //gl_Position = transpose(ubo.proj) * transpose(ubo.view) * transpose(ubo.model) * vec4(inPosition, 1.0);
-    //gl_Position = transpose(ubo.model * ubo.view * ubo.proj) * vec4(inPosition, 1.0);
-    fragColor = inColor;
-    fragTexCoord = inTexCoord;
+    gl_Position = objectUBO.mvp * vec4(inPosition, 1.0);
+    FragPos = vec3(objectUBO.viewModel * vec4(inPosition, 1.0));
+    Normal = normalize(vec3(objectUBO.normalMatrix * vec4(inNormal, 0.0f)));
+    FragTexCoord = inTexCoord;
 }

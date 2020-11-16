@@ -1,10 +1,6 @@
 #ifndef GAME_ENGINE_RENDERER_API_H
 #define GAME_ENGINE_RENDERER_API_H
 
-#include <mathlib.h>
-#include "VertexBuffer.h"
-#include "IndexBuffer.h"
-
 
 class RendererAPI {
 public:
@@ -18,15 +14,9 @@ private:
 public:
     virtual ~RendererAPI() = default;
 
-    static void SelectAPI(API api);
+    static void SelectAPI(API) {};
 
     static auto GetSelectedAPI() -> API { return s_SelectedAPI; }
-
-    virtual void SetClearColor(const math::vec4 &color) = 0;
-
-    virtual void Clear() = 0;
-
-    virtual void DrawIndexed(const VertexBuffer& data, const IndexBuffer& indices) = 0;
 };
 
 

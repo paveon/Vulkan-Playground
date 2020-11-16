@@ -4,42 +4,115 @@
 #include <fstream>
 #include <Engine/Include/Engine.h>
 #include <Platform/Vulkan/GraphicsContextVk.h>
+#include <glm/matrix.hpp>
+//#include <assimp>
 
-struct UniformBufferObject {
-    alignas(16) math::mat4 model;
-    alignas(16) math::mat4 view;
-    alignas(16) math::mat4 proj;
+struct DirectionalLight {
+    glm::vec4 direction;
+    glm::vec4 ambient;
+    glm::vec4 diffuse;
+    glm::vec4 specular;
 };
 
+struct PointLight {
+    glm::vec4 position;
+    glm::vec4 ambient;
+    glm::vec4 diffuse;
+    glm::vec4 specular;
+    glm::vec4 coeffs;
+};
+
+struct SpotLight {
+    glm::vec4 position;
+    glm::vec4 direction;
+    glm::vec4 ambient;
+    glm::vec4 diffuse;
+    glm::vec4 specular;
+    glm::vec4 cutOffs;
+};
+
+struct SceneUBO {
+    glm::vec4 cameraPosition;
+    DirectionalLight light;
+    SpotLight spotLight;
+    int32_t pointLightCount;
+};
+
+
+struct ModelUBO {
+    glm::mat4 mvp;
+};
+
+
 class TestLayer : public Layer {
+    const char *TEST_MODEL_PATH = BASE_DIR "/models/backpack.obj";
     const char *MODEL_PATH = BASE_DIR "/models/chalet.obj";
-    const char *TEXTURE_PATH = BASE_DIR "/textures/chalet.jpg";
+    const char *CHALET_TEXTURE_PATH = BASE_DIR "/textures/chalet.jpg";
+    const char *CONTAINER_DIFFUSE_TEX_PATH = BASE_DIR "/textures/container_diffuse.png";
+    const char *CONTAINER_SPECULAR_TEX_PATH = BASE_DIR "/textures/container_specular.png";
+    const char *CONTAINER_EMISSION_TEX_PATH = BASE_DIR "/textures/matrix_emission_map.jpg";
 
     const char *vertShaderPath = "shaders/triangle.vert.spv";
     const char *fragShaderPath = "shaders/triangle.frag.spv";
 
+    const char *vertShaderPath2 = "shaders/cube.vert.spv";
+    const char *fragShaderPath2 = "shaders/cube.frag.spv";
+
+    const char *vertLightShader = "shaders/lightCube.vert.spv";
+    const char *fragLightShader = "shaders/lightCube.frag.spv";
+
     GfxContextVk &m_Context;
     Device &m_Device;
 
-//    vk::CommandBuffers m_CmdBuffers;
+//    std::unique_ptr<VertexBuffer> m_VertexBuffer;
+//    std::unique_ptr<IndexBuffer> m_IndexBuffer;
+    std::vector<std::unique_ptr<Texture2D>> m_Textures;
+//    std::vector<std::unique_ptr<UniformBuffer>> m_UniformBuffers;
 
-//    std::unique_ptr<RenderPass> m_RenderPass;
-//    std::unique_ptr<Pipeline> m_GraphicsPipeline;
+    std::vector<std::shared_ptr<Material>> m_Materials;
+    std::vector<std::shared_ptr<Mesh>> m_Meshes;
+    std::vector<Model> m_ChaletModels;
+    std::vector<Model> m_CubeModels;
+    std::vector<Model> m_PointLightModels;
+    std::vector<Model> m_TestModels;
+    ModelInstance m_TestModelInstance;
 
-    std::unique_ptr<Model> m_Model;
-    std::unique_ptr<VertexBuffer> m_VertexBuffer;
-    std::unique_ptr<IndexBuffer> m_IndexBuffer;
-    std::unique_ptr<Texture2D> m_Texture;
-    std::unique_ptr<UniformBuffer> m_UniformBuffer;
+    std::vector<glm::vec4> m_LightPositions{
+            glm::vec4(2.0f, 0.0f, -0.5f, 1.0f),
+            glm::vec4(1.0f, 1.0f, -0.5f, 1.0f),
+            glm::vec4(0.0f, 1.0f, -0.5f, 1.0f),
+            glm::vec4(-1.0f, 1.0f, -0.5f, 1.0f),
+            glm::vec4(-2.0f, 1.0f, -0.5f, 1.0f),
+    };
+    std::vector<PointLight> m_PointLights;
 
-    std::shared_ptr<Material> m_Material;
-    std::shared_ptr<Mesh> m_Mesh{};
 
-//    VkRenderPassBeginInfo m_RenderPassBeginInfo = {};
-    UniformBufferObject m_UBO = {};
+    SceneUBO m_SceneUBO{
+            glm::vec4(0.0f),
+            DirectionalLight{
+                    glm::vec4(0.0f, 0.0f, -1.0f, 0.0f),
+                    glm::vec4(0.2f, 0.2f, 0.2f, 0.0f),
+                    glm::vec4(0.75f, 0.75f, 0.75f, 0.0f),
+                    glm::vec4(1.0f, 1.0f, 1.0f, 0.0f)
+            },
+            SpotLight{
+                    glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+                    glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+                    glm::vec4(0.2f, 0.2f, 0.2f, 0.0f),
+                    glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+                    glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+                    glm::vec4(std::cos(glm::radians(6.25f)), std::cos(glm::radians(9.375f)), 0.0f, 0.0f)
+            },
+            0,
+    };
+
+
+    std::unique_ptr<UniformBuffer> m_SceneUB;
+    std::unique_ptr<UniformBuffer> m_LightsUB;
 
     std::shared_ptr<PerspectiveCamera> m_Camera;
 
+    float m_LightRotation = 0.0f;
     float m_MouseSensitivity = 0.2f;
     float m_MoveSpeed = 3.0f;
 
@@ -47,19 +120,27 @@ public:
     explicit TestLayer(const char *name) :
             Layer(name),
             m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
-            m_Device(m_Context.GetDevice()) {
+            m_Device(m_Context.GetDevice()),
+            m_PointLights(m_LightPositions.size(), {
+                    glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+                    glm::vec4(0.05f, 0.05f, 0.05f, 0.0f),
+                    glm::vec4(0.5f, 0.5f, 0.5f, 0.0f),
+                    glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+                    glm::vec4(1.0f, 0.09f, 0.032f, 0.0f)
+            }) {
 
 
         auto[width, height] = m_Context.Swapchain().Extent();
         m_Camera = std::make_shared<PerspectiveCamera>(
-                math::vec3(0.0f, 3.0f, 0.0f),
-                math::vec3(0.0f, -1.0f, 0.0f),
+                glm::vec3(0.0f, 3.0f, 0.0f),
+                glm::vec3(0.0f, -1.0f, 0.0f),
                 width / (float) height,
-                0.1f, 10.0f, math::radians(45.0f));
+                0.01f, 200.0f, glm::radians(45.0f));
 
-        m_UBO.proj = m_Camera->GetProjection();
-        m_UBO.view = m_Camera->GetView();
-        m_UBO.model = math::mat4(1.0f);
+//        m_UBO.proj = m_Camera->GetProjection();
+//        m_UBO.view = m_Camera->GetView();
+//        m_UBO.model = glm::mat4(1.0f);
+//        m_UBO.mvp = m_Camera->GetProjection() * m_Camera->GetView() * glm::mat4(1.0f);
 
 //        m_RenderPass = RenderPass::Create();
     }
@@ -68,12 +149,13 @@ public:
         Layer::OnAttach(stack);
 
         auto[width, height] = Application::GetGraphicsContext().FramebufferSize();
+//        Renderer::SubmitCommand(RenderCommand::SetClearColor({0.64f, 0.84f, 0.91f, 1.0f}));
         Renderer::SubmitCommand(RenderCommand::SetClearColor({0.0f, 0.0f, 0.0f, 1.0f}));
         Renderer::SubmitCommand(RenderCommand::SetViewport(Viewport{
                 0.0f,
-                0.0f,
-                static_cast<float>(width),
                 static_cast<float>(height),
+                static_cast<float>(width),
+                -static_cast<float>(height),
                 0.0f,
                 1.0f
         }));
@@ -84,53 +166,148 @@ public:
                 height
         }));
 
-//        m_CmdBuffers = vk::CommandBuffers(m_Device,
-//                                          m_Device.GfxPool()->data(),
-//                                          VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-//                                          m_Context.Swapchain().ImageCount());
+        std::vector<std::pair<const char *, ShaderType>> shaderStages{
+                {vertShaderPath, ShaderType::VERTEX_SHADER},
+                {fragShaderPath, ShaderType::FRAGMENT_SHADER},
+        };
+        std::shared_ptr<ShaderProgram> program(ShaderProgram::Create(shaderStages, {{1, 0},
+                                                                                    {2, 0}}));
 
-        std::unique_ptr<ShaderProgram> fragShader(ShaderProgram::Create(fragShaderPath));
-        std::unique_ptr<ShaderProgram> vertexShader(ShaderProgram::Create(vertShaderPath));
-        m_Material = std::make_shared<Material>(vertexShader, fragShader);
-//        VertexLayout vertexLayout{
-//                VertexAttribute(ShaderType::Float3),
-//                VertexAttribute(ShaderType::Float3),
-//                VertexAttribute(ShaderType::Float2)
+        shaderStages[0] = {vertShaderPath2, ShaderType::VERTEX_SHADER};
+        shaderStages[1] = {fragShaderPath2, ShaderType::FRAGMENT_SHADER};
+        std::shared_ptr<ShaderProgram> basicProgram(ShaderProgram::Create(shaderStages, {{1, 0},
+                                                                                         {2, 0}}));
+
+        shaderStages[0] = {vertLightShader, ShaderType::VERTEX_SHADER};
+        shaderStages[1] = {fragLightShader, ShaderType::FRAGMENT_SHADER};
+        std::shared_ptr<ShaderProgram> lightProgram(ShaderProgram::Create(shaderStages, {{0, 0}}));
+
+        m_Textures.emplace_back(Texture2D::Create(CHALET_TEXTURE_PATH));
+        m_Textures.emplace_back(Texture2D::Create(CONTAINER_DIFFUSE_TEX_PATH));
+        m_Textures.emplace_back(Texture2D::Create(CONTAINER_SPECULAR_TEX_PATH));
+        m_Textures.emplace_back(Texture2D::Create(CONTAINER_EMISSION_TEX_PATH));
+        m_Textures[0]->Upload();
+        m_Textures[1]->Upload();
+        m_Textures[2]->Upload();
+        m_Textures[3]->Upload();
+
+        m_Materials.emplace_back(std::make_shared<Material>("chaletMaterial", program));
+        m_Materials.emplace_back(std::make_shared<Material>("cubeMaterial", basicProgram));
+        m_Materials.emplace_back(std::make_shared<Material>("lightMaterial", lightProgram));
+        m_Materials[0]->AllocateResources(10);
+        m_Materials[1]->AllocateResources(100);
+        m_Materials[2]->AllocateResources(10);
+
+        auto indicesMat0 = m_Materials[0]->BindTextures({m_Textures[0].get()}, 3, 0);
+        auto indicesMat1 = m_Materials[1]->BindTextures({m_Textures[1].get(), m_Textures[2].get(), m_Textures[3].get()},
+                                                        3, 0);
+
+        m_TestModels.emplace_back(Model(TEST_MODEL_PATH));
+        m_TestModels.back().StageMeshData();
+        m_TestModels.back().SetMaterial(m_Materials[1].get(), {3, 0},{1, 0});
+        m_TestModelInstance = m_TestModels.back().CreateInstance();
+        m_TestModelInstance.SetPosition(glm::vec3(0.0f));
+        m_TestModelInstance.SetScale(glm::vec3(0.5f));
+        m_TestModelInstance.SetRotationX(HALF_PI_F);
+
+        m_SceneUB = UniformBuffer::Create(sizeof(SceneUBO), 1);
+
+        size_t ubSize = sizeof(PointLight) * m_PointLights.size();
+        m_LightsUB = UniformBuffer::Create(ubSize, 1);
+
+        m_Materials[0]->BindUniformBuffer(*m_SceneUB, 0, 0);
+        m_Materials[1]->BindUniformBuffer(*m_SceneUB, 0, 0);
+//        m_Materials[2]->BindUniformBuffer(*m_SceneUB, 0, 0);
+
+//        m_Materials[0]->BindUniformBuffer(*m_LightsUB, 4, 0);
+        m_Materials[1]->BindUniformBuffer(*m_LightsUB, 4, 0);
+
+        m_LightsUB->SetData(m_PointLights.data(), 1);
+
+        m_SceneUBO.pointLightCount = m_PointLights.size();
+        m_SceneUBO.cameraPosition = glm::vec4(m_Camera->GetPosition(), 1.0f);
+        m_Materials[0]->SetUniform(0, 0, m_SceneUBO);
+        m_Materials[1]->SetUniform(0, 0, m_SceneUBO);
+        m_SceneUB->SetData(&m_SceneUBO, 1);
+
+//        m_Meshes.emplace_back(Mesh::FromOBJ(MODEL_PATH));
+//        m_Meshes.emplace_back(Mesh::Cube());
+
+//        MaterialUBO materialSpec{
+//                glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+//                glm::vec4(1.0f),
+//                glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+//                32.0f,
+//                (uint32_t)(indicesMat1[0]),
+//                (uint32_t)(indicesMat1[1]),
+//                (uint32_t)(indicesMat1[2])
 //        };
-//
-//        DescriptorLayout descriptorLayout{
-//                DescriptorBinding(DescriptorType::UniformBuffer),
-//                DescriptorBinding(DescriptorType::Texture)
+
+//        m_ChaletModels.emplace_back();
+//        m_ChaletModels.back().AttachMesh(m_Meshes[0]);
+//        m_ChaletModels.back().SetMaterial(m_Materials[0].get(), std::pair<uint32_t, uint32_t>(),
+//                                          std::pair<uint32_t, uint32_t>());
+//        m_ChaletModels.back().SetScale(glm::vec3(0.5f));
+//        m_ChaletModels.back().SetUniform(1, 0, materialSpec);
+
+//        m_ChaletModels.emplace_back();
+//        m_ChaletModels.back().AttachMesh(m_Meshes[0]);
+//        m_ChaletModels.back().SetMaterial(m_Materials[0].get(), std::pair<uint32_t, uint32_t>(),
+//                                          std::pair<uint32_t, uint32_t>());
+//        m_ChaletModels.back().SetPosition(glm::vec3(1.0f));
+//        m_ChaletModels.back().SetUniform(1, 0, materialSpec);
+
+//        m_CubeModels.emplace_back();
+//        m_CubeModels.back().AttachMesh(m_Meshes[1]);
+//        m_CubeModels.back().SetMaterial(m_Materials[1].get(), std::pair<uint32_t, uint32_t>(),
+//                                        std::pair<uint32_t, uint32_t>());
+//        m_CubeModels.back().SetPosition(glm::vec3(0.0f, 0.0f, -1.0f));
+//        m_CubeModels.back().SetScale(glm::vec3(0.75f));
+//        m_CubeModels.back().SetColor(glm::vec3(1.0f, 0.5f, 0.31f));
+//        m_CubeModels.back().SetUniform(1, 0, materialSpec);
+
+//        glm::mat4 viewModel = m_Camera->GetView() * m_CubeModels.back().GetModelMatrix();
+//        glm::mat4 mvp = m_Camera->GetProjection() * viewModel;
+//        glm::mat4 normalMatrix = m_CubeModels.back().GetNormalMatrix() * m_Camera->GetView();
+//        TransformUBO ubo{
+//                mvp,
+//                viewModel,
+//                normalMatrix,
+//                m_CubeModels.back().GetColor(),
+//                0
 //        };
+//        m_CubeModels.back().SetUniform(2, 0, ubo);
 
-//        m_GraphicsPipeline = Pipeline::Create(*m_RenderPass, *vertexShader, *fragShader, vertexLayout, descriptorLayout,
-//                                              {},
-//                                              true);
+//        for (const auto &chalet : m_ChaletModels) {
+//            ubo.viewModel = m_Camera->GetView() * chalet.GetModelMatrix();
+//            ubo.mvp = m_Camera->GetProjection() * ubo.viewModel;
+//            ubo.normalMatrix = chalet.GetNormalMatrix() * m_Camera->GetView();
+//            ubo.objectColor = glm::vec3(0.0f);
+//            chalet.SetUniform(2, 0, ubo);
+//        }
 
-        /* Create vertex and index buffers */
-//        m_VertexBuffer = VertexBuffer::Create();
-//        m_IndexBuffer = IndexBuffer::Create();
-//        m_VertexBuffer->StageData(m_Model->Vertices(), m_Model->VertexDataSize(), m_Model->VertexCount());
-//        m_IndexBuffer->StageData(m_Model->Indices(), m_Model->IndexDataSize(), m_Model->IndexCount());
+//        glm::mat4 projectionView(m_Camera->GetProjectionView());
+//        for (const auto &pos : m_LightPositions) {
+//            m_PointLightModels.emplace_back();
+//            auto &light = m_PointLightModels.back();
+////            light.AttachMesh(m_Meshes[1]);
+//            light.SetMaterial(m_Materials[2].get(), std::pair<uint32_t, uint32_t>(), std::pair<uint32_t, uint32_t>());
+//            light.SetPosition(pos);
+//            light.SetScale(glm::vec3(0.5f));
+//            light.SetUniform(0, 0, ModelUBO{projectionView * light.GetModelMatrix()});
+//        }
 
-        m_Texture = Texture2D::Create(TEXTURE_PATH);
-        m_Texture->Upload();
+//        for (const auto &material : m_Materials)
+//            material->UpdateUniforms();
 
-        m_UniformBuffer = UniformBuffer::Create(sizeof(UniformBufferObject));
-        m_Material->BindUniformBuffer(m_UniformBuffer, 0);
-        m_Material->BindTexture(m_Texture, 1);
+//        for (const auto &mesh : m_Meshes)
+//            mesh->StageData();
 
-        m_Mesh = std::make_shared<Mesh>(MODEL_PATH);
-        m_Mesh->SetMaterial(m_Material);
-        m_Mesh->StageData();
+//        for (const auto& model : m_TestModels) {
+//            model.StageMeshData();
+//        }
+
         Renderer::FlushStagedData();
-//        m_Mesh = std::make_shared<Mesh>(std::move(m_VertexBuffer), std::move(m_IndexBuffer));
-
-//        m_Model = std::make_unique<Model>();
-//        m_Model->AttachMesh(m_Mesh);
-
-//        m_GraphicsPipeline->BindUniformBuffer(*m_UniformBuffer, 0);
-//        m_GraphicsPipeline->BindTexture(*m_Texture, 1);
     }
 
     void OnDetach() override {
@@ -138,27 +315,23 @@ public:
     }
 
     auto OnWindowResize(WindowResizeEvent &e) -> bool override {
-//        m_RenderPass = RenderPass::Create();
-//
-//        m_CmdBuffers = vk::CommandBuffers(m_Device,
-//                                          m_Device.GfxPool()->data(),
-//                                          VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-//                                          m_Context.Swapchain().ImageCount());
-
-        m_UniformBuffer = UniformBuffer::Create(sizeof(UniformBufferObject));
-        m_Material->BindUniformBuffer(m_UniformBuffer, 0);
-//        m_GraphicsPipeline->Recreate(*m_RenderPass);
-//        m_GraphicsPipeline->BindUniformBuffer(*m_UniformBuffer, 0);
-//        m_GraphicsPipeline->BindTexture(*m_Texture, 1);
+//        m_UniformBuffers[0] = UniformBuffer::Create(sizeof(ModelUBO), m_ModelUBOs.size());
+//        m_UniformBuffers[1] = UniformBuffer::Create(sizeof(TransformUBO), m_ModelUBOs.size());
+//        m_Materials[0]->BindUniformBuffer(m_UniformBuffers[0], 0, 0);
+//        m_Materials[1]->BindUniformBuffer(m_UniformBuffers[1], 0, 0);
 
         m_Camera->SetAspectRatio(e.Width() / (float) e.Height());
-        m_UBO.proj = m_Camera->GetProjection();
+
+//        glm::mat4 projectionView(m_Camera->GetProjection() * m_Camera->GetView());
+//        for (size_t i = 0; i < m_ModelUBOs.size(); i++) {
+//            m_ModelUBOs[i].mvp = projectionView * m_Models[i].GetModelMatrix();
+//        }
 
         Renderer::SubmitCommand(RenderCommand::SetViewport(Viewport{
                 0.0f,
-                0.0f,
-                static_cast<float>(e.Width()),
                 static_cast<float>(e.Height()),
+                static_cast<float>(e.Width()),
+                -static_cast<float>(e.Height()),
                 0.0f,
                 1.0f
         }));
@@ -184,6 +357,7 @@ public:
     }
 
     void OnUpdate(Timestep ts) override {
+        static float time = 0.0f;
         static auto lastMousePos = Input::MousePos();
 
         auto mousePos = Input::MousePos();
@@ -193,7 +367,6 @@ public:
                 float deltaX = (lastMousePos.first - mousePos.first) * m_MouseSensitivity * ts;
                 float deltaY = (lastMousePos.second - mousePos.second) * m_MouseSensitivity * ts;
                 m_Camera->ChangeYawPitch(deltaX, deltaY);
-                m_UBO.view = m_Camera->GetView();
             }
             lastMousePos = mousePos;
         }
@@ -201,51 +374,102 @@ public:
 
         if (Input::KeyPressed(IO_KEY_E)) {
             m_Camera->MoveZ(m_MoveSpeed * ts);
-            m_UBO.view = m_Camera->GetView();
         } else if (Input::KeyPressed(IO_KEY_Q)) {
             m_Camera->MoveZ(-m_MoveSpeed * ts);
-            m_UBO.view = m_Camera->GetView();
         }
 
         if (Input::KeyPressed(IO_KEY_W)) {
             m_Camera->MoveInDirection(m_MoveSpeed * ts);
-            m_UBO.view = m_Camera->GetView();
         } else if (Input::KeyPressed(IO_KEY_S)) {
             m_Camera->MoveInDirection(-m_MoveSpeed * ts);
-            m_UBO.view = m_Camera->GetView();
         }
 
         if (Input::KeyPressed(IO_KEY_A)) {
             m_Camera->MoveSideways(-m_MoveSpeed * ts);
-            m_UBO.view = m_Camera->GetView();
         } else if (Input::KeyPressed(IO_KEY_D)) {
             m_Camera->MoveSideways(m_MoveSpeed * ts);
-            m_UBO.view = m_Camera->GetView();
         }
 
+//        time += ts.GetSeconds();
+//        const float radius = 2.0f;
+//        const float x = (m_LightRotation / 360.0f) * TWO_PI_F;
+//        float lightX = std::sin(x) * radius;
+//        float lightY = std::cos(x) * radius;
+//        float lightZ = std::sin(m_Time) * 0.5 - 1.0f;
+//        m_SceneUBO.lightPosition = glm::vec4(lightX, lightY, -1.0f, 1.0f);
+        m_SceneUBO.cameraPosition = glm::vec4(m_Camera->GetPosition(), 1.0f);
 
-//        m_UBO.model = math::rotate(math::mat4(1.0f), time * math::radians(15.0f), math::vec3(0.0f, 0.0f, 1.0f));
+        SceneUBO sceneUBO = m_SceneUBO;
+        sceneUBO.light.direction = m_Camera->GetView() * m_SceneUBO.light.direction;
+//        sceneUBO.pointLight.position = m_Camera->GetView() * m_SceneUBO.pointLight.position;
+        sceneUBO.spotLight.position = m_Camera->GetView() * glm::vec4(m_Camera->GetPosition(), 1.0f);
+        sceneUBO.spotLight.direction = m_Camera->GetView() * glm::vec4(m_Camera->GetDirection(), 0.0f);
 
-//        auto[width, height] = Application::GetGraphicsContext().FramebufferSize();
+        m_Materials[1]->SetUniform(0, 0, sceneUBO);
+        m_SceneUB->SetData(&sceneUBO, 1);
 
-        m_UniformBuffer->SetData(Renderer::GetImageIndex(), &m_UBO);
+//        glm::mat4 viewModel = m_Camera->GetView() * m_CubeModels[0].GetModelMatrix();
+//        glm::mat4 mvp = m_Camera->GetProjection() * viewModel;
+//        glm::mat4 normalMatrix = m_CubeModels[0].GetNormalMatrix() * m_Camera->GetView();
+//        TransformUBO ubo{mvp,
+//                    viewModel,
+//                    normalMatrix,
+//                    m_CubeModels[0].GetColor(),
+//                    0
+//        };
+//        m_CubeModels[0].SetUniform(2, 0, ubo);
+
+//        for (const auto &chalet : m_ChaletModels) {
+//            ubo.viewModel = m_Camera->GetView() * chalet.GetModelMatrix();
+//            ubo.mvp = m_Camera->GetProjection() * ubo.viewModel;
+//            ubo.normalMatrix = chalet.GetNormalMatrix() * m_Camera->GetView();
+//            ubo.objectColor = glm::vec3(0.0f);
+//            ubo.materialIdx = 0;
+//            chalet.SetUniform(2, 0, ubo);
+//        }
+
+        for (size_t i = 0; i < m_LightPositions.size(); i++) {
+//            m_PointLightModels[i].SetPosition(m_LightPositions[i]);
+            m_PointLights[i].position = m_Camera->GetView() * m_LightPositions[i];
+        }
+        m_LightsUB->SetData(m_PointLights.data(), 1);
+
+//        for (const auto &lightModel : m_PointLightModels) {
+//            lightModel.SetUniform(0, 0, ModelUBO{m_Camera->GetProjectionView() * lightModel.GetModelMatrix()});
+//        }
+
+//        for (const auto &material : m_Materials)
+//            material->UpdateUniforms();
     }
 
     void OnImGuiDraw() override {
-        ImGui::Begin("Test window");
-        static float rotation = 0.0;
-        ImGui::SliderFloat("rotation", &rotation, 0.0f, 360.0f);
-        static float translation[] = {0.0, 0.0};
-        ImGui::SliderFloat2("position", translation, -1.0, 1.0);
-        static float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-        ImGui::ColorEdit3("color", color);
+        ImGui::Begin("Scene options");
+//        ImGui::SliderFloat3("Point Light", &m_SceneUBO.pointLight.position.x, -10, 10);
+        ImGui::SliderFloat3("Light direction", &m_SceneUBO.light.direction.x, -1.0f, 1.0f);
+        ImGui::SliderFloat3("Light ambient", &m_SceneUBO.light.ambient.x, 0.0f, 1.0f);
+        ImGui::SliderFloat3("Light diffuse", &m_SceneUBO.light.diffuse.x, 0.0f, 1.0f);
+        ImGui::SliderFloat3("Light specular", &m_SceneUBO.light.specular.x, 0.0f, 1.0f);
+        ImGui::SliderFloat("Mouse Sensitivity", &m_MouseSensitivity, 0.01, 0.3);
+        ImGui::SliderFloat("Move speed", &m_MoveSpeed, 0.1f, 5.0f);
         ImGui::End();
+
+//        ImGui::ShowDemoWindow();
     }
 
     void OnDraw() override {
         Renderer::SubmitCommand(RenderCommand::Clear());
         Renderer::BeginScene(m_Camera);
-        Renderer::SubmitMesh(m_Mesh);
+        Renderer::SubmitModelInstance(&m_TestModelInstance);
+//        for (const Model &model : m_ChaletModels) {
+//            Renderer::SubmitModel(&model);
+//        }
+//        for (const Model &model : m_CubeModels) {
+//            Renderer::SubmitModel(&model);
+//        }
+//        for (const Model &light : m_PointLightModels) {
+//            Renderer::SubmitModel(&light);
+//        }
+
         Renderer::EndScene();
 
 //        VkCommandBufferBeginInfo beginInfo = {};
@@ -290,7 +514,7 @@ public:
         RendererAPI::SelectAPI(RendererAPI::API::VULKAN);
 
         PushLayer(std::make_unique<TestLayer>("TestLayer"));
-        Renderer::SetImGuiLayer(static_cast<ImGuiLayer *>(PushOverlay(ImGuiLayer::Create())));
+        Renderer::SetImGuiLayer(PushOverlay(ImGuiLayer::Create()));
     }
 
     ~SandboxApp() override = default;

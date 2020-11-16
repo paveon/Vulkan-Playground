@@ -26,7 +26,7 @@ class WindowResizeEvent;
 
 class RendererVk : public Renderer {
     struct MeshAllocationMetadata {
-        DeviceBuffer* buffer = nullptr;
+        vk::DeviceBuffer *buffer = nullptr;
         VkDeviceSize startOffset = 0;
     };
 
@@ -44,13 +44,13 @@ public:
 
     void RecreateSwapchain();
 
-    auto GetDevice() const -> Device& { return m_Device; }
+    auto GetDevice() const -> Device & { return m_Device; }
 
-    auto GetFramebuffer() -> vk::Framebuffer& { return *m_Framebuffers[m_ImageIndex]; }
+    auto GetFramebuffer() -> vk::Framebuffer & { return *m_Framebuffers[m_ImageIndex]; }
 
     auto FramebufferSize() const -> std::pair<uint32_t, uint32_t> { return m_Context.FramebufferSize(); }
 
-    void impl_OnWindowResize(WindowResizeEvent& e) override;
+    void impl_OnWindowResize(WindowResizeEvent &e) override;
 
     auto impl_GetImageIndex() const -> size_t override { return m_ImageIndex; }
 
@@ -58,46 +58,54 @@ public:
 //        m_StageBuffer.StageData(static_cast<vk::Buffer **>(dstBuffer), dstOffset, data, bytes);
 //    }
 
-    void impl_StageMesh(Mesh* mesh) override {
+    void impl_StageMesh(Mesh *mesh) override {
         /// TODO: will break when mesh is released
         mesh->m_ResourceID = m_MeshAllocations.size();
         m_MeshAllocations[mesh->m_ResourceID] = MeshAllocationMetadata();
         m_StageBuffer.StageMesh(mesh);
     }
 
+    auto impl_AllocateUniformBuffer(uint64_t size) -> BufferAllocation override {
+        return {m_UniformBuffer.memory(),
+                m_UniformBuffer.buffer(),
+                m_UniformBuffer.SubAllocate(size)
+        };
+    }
+
     void impl_FlushStagedData() override;
 
     void impl_WaitIdle() const override;
 
-    auto impl_GetRenderPass() const -> const RenderPass& override { return *m_RenderPass; }
+    auto impl_GetRenderPass() const -> const RenderPass & override { return *m_RenderPass; }
 
 private:
     const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
-    GfxContextVk& m_Context;
-    Device& m_Device;
+    GfxContextVk &m_Context;
+    Device &m_Device;
 
     /// TODO: Create some basic device memory management system and maybe a streaming system later?
     std::unordered_map<size_t, MeshAllocationMetadata> m_MeshAllocations;
-    RingStageBuffer m_StageBuffer;
-    DeviceBuffer m_MeshDeviceBuffer;
+    vk::RingStageBuffer m_StageBuffer;
+    vk::DeviceBuffer m_MeshDeviceBuffer;
+    vk::UniformBuffer m_UniformBuffer;
 
-    vk::CommandPool* m_GfxCmdPool;
-    vk::CommandPool* m_TransferCmdPool;
-    vk::CommandBuffers* m_GfxCmdBuffers;
-    vk::CommandBuffers* m_TransferCmdBuffers;
+    vk::CommandPool *m_GfxCmdPool;
+    vk::CommandPool *m_TransferCmdPool;
+    vk::CommandBuffers *m_GfxCmdBuffers;
+    vk::CommandBuffers *m_TransferCmdBuffers;
 
-    vk::DeviceMemory* m_ImageMemory;
-    vk::Image* m_ColorImage;
-    vk::Image* m_DepthImage;
-    vk::ImageView* m_ColorImageView;
-    vk::ImageView* m_DepthImageView;
+    vk::DeviceMemory *m_ImageMemory;
+    vk::Image *m_ColorImage;
+    vk::Image *m_DepthImage;
+    vk::ImageView *m_ColorImageView;
+    vk::ImageView *m_DepthImageView;
 
-    std::vector<vk::Framebuffer*> m_Framebuffers;
+    std::vector<vk::Framebuffer *> m_Framebuffers;
 
-    std::vector<vk::Semaphore*> m_AcquireSemaphores;
-    std::vector<vk::Semaphore*> m_ReleaseSemaphores;
-    std::vector<vk::Fence*> m_Fences;
+    std::vector<vk::Semaphore *> m_AcquireSemaphores;
+    std::vector<vk::Semaphore *> m_ReleaseSemaphores;
+    std::vector<vk::Fence *> m_Fences;
 
     std::unique_ptr<RenderPass> m_RenderPass;
 

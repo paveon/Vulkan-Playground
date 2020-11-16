@@ -36,12 +36,9 @@ auto Device::pickPhysicalDevice() -> VkPhysicalDevice {
                 VkSampleCountFlags counts = std::min(m_Properties.limits.framebufferColorSampleCounts,
                                                      m_Properties.limits.framebufferDepthSampleCounts);
 
-                if (counts & VK_SAMPLE_COUNT_64_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_64_BIT; }
-                else if (counts & VK_SAMPLE_COUNT_32_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_32_BIT; }
-                else if (counts & VK_SAMPLE_COUNT_16_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_16_BIT; }
-                else if (counts & VK_SAMPLE_COUNT_8_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_8_BIT; }
-                else if (counts & VK_SAMPLE_COUNT_4_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_4_BIT; }
-                else if (counts & VK_SAMPLE_COUNT_2_BIT) { m_MsaaSamples = VK_SAMPLE_COUNT_2_BIT; }
+                for (uint32_t i = VK_SAMPLE_COUNT_2_BIT; i <= VK_SAMPLE_COUNT_64_BIT; i <<= 1u) {
+                    if (counts & i) m_SupportedSamplesMSAA.emplace_back((VkSampleCountFlagBits)i);
+                }
                 return device;
             } else if (!fallback) {
                 fallback = device;
@@ -192,8 +189,11 @@ void RingStageBuffer::Allocate(VkDeviceSize size) {
 //}
 
 
-void RingStageBuffer::StageMesh(const Mesh* mesh) {
-    VkDeviceSize dataSize = mesh->VertexDataSize() + mesh->IndexDataSize();
+void RingStageBuffer::StageMesh(const Mesh *mesh) {
+    const auto &vertexData = mesh->VertexData();
+    const auto &indices = mesh->Indices();
+    auto indexDataSize = indices.size() * sizeof(uint32_t);
+    VkDeviceSize dataSize = vertexData.size() + indexDataSize;
     if (dataSize >= FreeSpace())
         throw std::runtime_error("[RingStageBuffer] Not enough free space");
 
@@ -212,35 +212,36 @@ void RingStageBuffer::StageMesh(const Mesh* mesh) {
         regions.emplace_back(VkBufferCopy{m_EndOffset, 0, chunkSize});
         regions.emplace_back(VkBufferCopy{0, 0, dataSize - chunkSize});
 
-        if (chunkSize > mesh->VertexDataSize()) {
-            std::memcpy(bufferPtr, mesh->Vertices(), mesh->VertexDataSize());
-            bufferPtr += mesh->VertexDataSize();
-            std::memcpy(bufferPtr, mesh->Indices(), chunkSize - mesh->VertexDataSize());
-            uint8_t *dataPtr = (uint8_t *) mesh->Indices() + (chunkSize - mesh->VertexDataSize());
+        if (chunkSize > vertexData.size()) {
+            std::memcpy(bufferPtr, vertexData.data(), vertexData.size());
+            bufferPtr += vertexData.size();
+
+            std::memcpy(bufferPtr, indices.data(), chunkSize - vertexData.size());
+            const uint8_t *dataPtr = (uint8_t *) indices.data() + (chunkSize - vertexData.size());
             m_EndOffset = dataSize - chunkSize;
-            assert(m_EndOffset == (mesh->IndexDataSize() - (chunkSize - mesh->VertexDataSize())));
+            assert(m_EndOffset == (indexDataSize - (chunkSize - vertexData.size())));
             std::memcpy(m_Memory->m_Mapped, dataPtr, m_EndOffset);
-        } else if (chunkSize < mesh->VertexDataSize()) {
-            std::memcpy(bufferPtr, mesh->Vertices(), chunkSize);
-            uint8_t *dataPtr = (uint8_t *) mesh->Vertices() + chunkSize;
+        } else if (chunkSize < vertexData.size()) {
+            std::memcpy(bufferPtr, vertexData.data(), chunkSize);
+            const uint8_t *dataPtr = (uint8_t *) vertexData.data() + chunkSize;
             m_EndOffset = dataSize - chunkSize;
-            assert(m_EndOffset == (mesh->VertexDataSize() - chunkSize) + mesh->IndexDataSize());
+            assert(m_EndOffset == (vertexData.size() - chunkSize) + indexDataSize);
             bufferPtr = (uint8_t *) m_Memory->m_Mapped;
-            std::memcpy(bufferPtr, dataPtr, mesh->VertexDataSize() - chunkSize);
-            bufferPtr += (mesh->VertexDataSize() - chunkSize);
-            std::memcpy(bufferPtr, mesh->Indices(), mesh->IndexDataSize());
+            std::memcpy(bufferPtr, dataPtr, vertexData.size() - chunkSize);
+            bufferPtr += (vertexData.size() - chunkSize);
+            std::memcpy(bufferPtr, indices.data(), indexDataSize);
         } else {
-            std::memcpy(bufferPtr, mesh->Vertices(), chunkSize);
+            std::memcpy(bufferPtr, vertexData.data(), chunkSize);
             m_EndOffset = dataSize - chunkSize;
-            assert(m_EndOffset == mesh->IndexDataSize());
-            std::memcpy(m_Memory->m_Mapped, mesh->Indices(), m_EndOffset);
+            assert(m_EndOffset == indexDataSize);
+            std::memcpy(m_Memory->m_Mapped, indices.data(), m_EndOffset);
         }
     } else {
         regions.emplace_back(VkBufferCopy{m_EndOffset, 0, dataSize});
         uint8_t *bufferPtr = (uint8_t *) m_Memory->m_Mapped + m_EndOffset;
-        std::memcpy(bufferPtr, mesh->Vertices(), mesh->VertexDataSize());
-        bufferPtr += mesh->VertexDataSize();
-        std::memcpy(bufferPtr, mesh->Indices(), mesh->IndexDataSize());
+        std::memcpy(bufferPtr, vertexData.data(), vertexData.size());
+        bufferPtr += vertexData.size();
+        std::memcpy(bufferPtr, indices.data(), indexDataSize);
         m_EndOffset += dataSize;
     }
 }
@@ -260,9 +261,9 @@ void DeviceBuffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage) {
 }
 
 
-VkBufferCopy DeviceBuffer::TransferData(const vk::CommandBuffer &cmdBuffer,
-                                        const RingStageBuffer &stageBuffer,
-                                        std::vector<VkBufferCopy> &copyRegions) {
+auto DeviceBuffer::TransferData(const vk::CommandBuffer &cmdBuffer,
+                                const RingStageBuffer &stageBuffer,
+                                std::vector<VkBufferCopy> &copyRegions) -> VkBufferCopy {
     assert(!copyRegions.empty());
 
     size_t bytes = std::accumulate(copyRegions.begin(), copyRegions.end(), 0,
@@ -299,7 +300,7 @@ VkBufferCopy DeviceBuffer::TransferData(const vk::CommandBuffer &cmdBuffer,
     bestfitIt->free = false;
     bestfitIt->size = bytes;
 
-    for (auto& region : copyRegions) {
+    for (auto &region : copyRegions) {
         region.dstOffset += bestfitIt->offset;
     }
     vkCmdCopyBuffer(cmdBuffer.data(),
@@ -309,8 +310,64 @@ VkBufferCopy DeviceBuffer::TransferData(const vk::CommandBuffer &cmdBuffer,
                     copyRegions.data());
 
     return VkBufferCopy{
-        copyRegions[0].srcOffset,
-        bestfitIt->offset,
-        bestfitIt->size
+            copyRegions[0].srcOffset,
+            bestfitIt->offset,
+            bestfitIt->size
     };
+}
+
+
+void vk::UniformBuffer::Allocate(VkDeviceSize size) {
+    auto minOffset = m_Device->properties().limits.minUniformBufferOffsetAlignment;
+    size = roundUp(size, minOffset);
+
+    VkMemoryPropertyFlags memoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    m_Buffer = vk::Buffer(*m_Device,
+                          {m_Device->GfxQueueIdx()},
+                          size,
+                          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(*m_Device, m_Buffer.data(), &memRequirements);
+    auto memoryType = m_Device->getMemoryType(memRequirements.memoryTypeBits, memoryFlags);
+    m_BufferMemory = vk::DeviceMemory(*m_Device, memoryType, memRequirements.size);
+    m_Buffer.BindMemory(m_BufferMemory.data(), 0);
+    m_SubAllocations.emplace_back(Metadata{0, size, true});
+}
+
+
+auto vk::UniformBuffer::SubAllocate(VkDeviceSize size) -> VkDeviceSize {
+    /// Assuming requested size is correctly aligned
+
+    auto bestfitIt = m_SubAllocations.end();
+    for (auto it = m_SubAllocations.begin(); it != m_SubAllocations.end(); ++it) {
+        if (it->free && it->size >= size) {
+            if (bestfitIt != m_SubAllocations.end()) {
+                if (it->size < bestfitIt->size) bestfitIt = it;
+            } else {
+                bestfitIt = it;
+            }
+        }
+    }
+
+    if (bestfitIt == m_SubAllocations.end()) {
+        std::ostringstream msg;
+        msg << "[UniformBuffer (" << m_Buffer.ptr() << ")] Not enough free space";
+        throw std::runtime_error(msg.str().c_str());
+    }
+
+    if (bestfitIt->size > size) {
+        bestfitIt = m_SubAllocations.emplace(bestfitIt + 1, Metadata{
+                bestfitIt->offset + size,
+                bestfitIt->size - size,
+                true
+        });
+        bestfitIt--;
+    }
+    bestfitIt->free = false;
+    bestfitIt->size = size;
+
+    return bestfitIt->offset;
 }

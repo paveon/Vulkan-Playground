@@ -8,8 +8,10 @@
 #include <vector>
 #include <set>
 #include <Engine/Application.h>
+#include <Engine/Renderer/Material.h>
 
 #include "RendererVk.h"
+#include "PipelineVk.h"
 #include <examples/imgui_impl_vulkan.h>
 #include <Engine/Core.h>
 
@@ -17,9 +19,10 @@
 RendererVk::RendererVk() :
         m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
         m_Device(m_Context.GetDevice()),
-        m_StageBuffer(&m_Device, 1000'000'00),
-        m_MeshDeviceBuffer(&m_Device, 1000'000'00,
-                           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
+        m_StageBuffer(&m_Device, 100'000'000),
+        m_MeshDeviceBuffer(&m_Device, 100'000'000,
+                           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+        m_UniformBuffer(&m_Device, 10'000'000) {
 
     vk::Swapchain &swapchain(m_Context.Swapchain());
     auto extent = swapchain.Extent();
@@ -175,6 +178,8 @@ void RendererVk::DrawFrame() {
     vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
 
     RenderCommand *cmd = nullptr;
+    PipelineVk *boundPipeline = nullptr;
+
     while ((cmd = m_CmdQueue.GetNextCommand()) != nullptr) {
         switch (cmd->m_Type) {
             case RenderCommand::Type::SET_CLEAR_COLOR: {
@@ -197,19 +202,20 @@ void RendererVk::DrawFrame() {
                 std::memcpy(&m_Scissor, &scissor, sizeof(Scissor));
                 break;
             }
-            case RenderCommand::Type::BIND_VERTEX_BUFFER: {
-                auto payload = cmd->UnpackData<BindVertexBufferPayload>();
-                payload.vertexBuffer->Bind(primaryCmdBuffer.data(), payload.offset);
-                break;
-            }
-            case RenderCommand::Type::BIND_INDEX_BUFFER: {
-                auto payload = cmd->UnpackData<BindIndexBufferPayload>();
-                payload.indexBuffer->Bind(primaryCmdBuffer.data(), payload.offset);
-                break;
-            }
+//            case RenderCommand::Type::BIND_VERTEX_BUFFER: {
+//                auto payload = cmd->UnpackData<BindVertexBufferPayload>();
+//                payload.vertexBuffer->Bind(primaryCmdBuffer.data(), payload.offset);
+//                break;
+//            }
+//            case RenderCommand::Type::BIND_INDEX_BUFFER: {
+//                auto payload = cmd->UnpackData<BindIndexBufferPayload>();
+//                payload.indexBuffer->Bind(primaryCmdBuffer.data(), payload.offset);
+//                break;
+//            }
             case RenderCommand::Type::BIND_MATERIAL: {
                 auto *material = cmd->UnpackData<Material *>();
-                material->GetPipeline().Bind(primaryCmdBuffer.data(), m_ImageIndex);
+                boundPipeline = static_cast<PipelineVk*>(&material->GetPipeline());
+                boundPipeline->Bind(primaryCmdBuffer.data(), m_ImageIndex);
                 break;
             }
             case RenderCommand::Type::BIND_MESH: {
@@ -217,27 +223,45 @@ void RendererVk::DrawFrame() {
                 auto it = m_MeshAllocations.find(mesh->m_ResourceID);
                 if (it == m_MeshAllocations.end())
                     assert(false);
-                const auto& meshInfo = it->second;
+                const auto &meshInfo = it->second;
                 vkCmdBindVertexBuffers(primaryCmdBuffer.data(),
                                        0,
                                        1,
                                        meshInfo.buffer->bufferPtr(),
                                        &meshInfo.startOffset);
 
-                vkCmdBindIndexBuffer(primaryCmdBuffer.data(),
-                                     meshInfo.buffer->buffer(),
-                                     meshInfo.startOffset + mesh->VertexDataSize(),
-                                     VK_INDEX_TYPE_UINT32);
+                if (!mesh->Indices().empty()) {
+                    vkCmdBindIndexBuffer(primaryCmdBuffer.data(),
+                                         meshInfo.buffer->buffer(),
+                                         meshInfo.startOffset + mesh->VertexData().size(),
+                                         VK_INDEX_TYPE_UINT32);
+                }
+
+                boundPipeline->SetDynamicOffsets(mesh->GetMaterialObjectIdx());
+                break;
+            }
+            case RenderCommand::Type::SET_UNIFORM_OFFSET: {
+                auto payload = cmd->UnpackData<SetDynamicOffsetPayload>();
+                boundPipeline->SetDynamicOffsets(payload.objectIndex);
+                break;
+            }
+            case RenderCommand::Type::DRAW: {
+                auto payload = cmd->UnpackData<DrawPayload>();
+                vkCmdDraw(primaryCmdBuffer.data(),
+                          payload.vertexCount,
+                          payload.instanceCount,
+                          payload.firstVertex,
+                          payload.firstInstance);
                 break;
             }
             case RenderCommand::Type::DRAW_INDEXED: {
                 auto payload = cmd->UnpackData<DrawIndexedPayload>();
                 vkCmdDrawIndexed(primaryCmdBuffer.data(),
                                  payload.indexCount,
-                                 1,
+                                 payload.instanceCount,
                                  payload.firstIndex,
                                  payload.vertexOffset,
-                                 0);
+                                 payload.firstInstance);
                 break;
             }
 
@@ -320,26 +344,24 @@ void RendererVk::impl_FlushStagedData() {
 
         VkDeviceSize dstSubDataOffset = dstRegion.dstOffset;
         while (!m_StageBuffer.IsEmpty()) {
-            RingStageBuffer::DataInfo metadata = m_StageBuffer.PopMetadata();
+            vk::RingStageBuffer::DataInfo metadata = m_StageBuffer.PopMetadata();
             switch (metadata.dataType) {
-                case RingStageBuffer::DataType::MESH_DATA: {
+                case vk::RingStageBuffer::DataType::MESH_DATA: {
                     auto it = m_MeshAllocations.find(metadata.resourceID);
                     if (it == m_MeshAllocations.end())
                         assert(false);
 
-                    MeshAllocationMetadata& meshAllocInfo = it->second;
+                    MeshAllocationMetadata &meshAllocInfo = it->second;
                     meshAllocInfo.buffer = &m_MeshDeviceBuffer;
                     meshAllocInfo.startOffset = dstSubDataOffset;
                     break;
                 }
 
-                case RingStageBuffer::DataType::TEXTURE_DATA:
+                case vk::RingStageBuffer::DataType::TEXTURE_DATA:
                     assert(false);
-                    break;
 
                 default:
                     assert(false);
-                    break;
             }
             dstSubDataOffset += metadata.dataSize;
         }

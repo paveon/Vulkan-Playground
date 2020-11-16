@@ -3,9 +3,12 @@
 #include <chrono>
 #include <memory>
 #include <thread>
-#include <Platform/Vulkan/RendererVk.h>
+#include <Engine/Renderer/Renderer.h>
+#include <Engine/Renderer/utils.h>
+
 
 Application *Application::s_Application;
+
 
 Application::Application(const char *name) : m_Name(name), m_LayerStack(this) {
     if (s_Application) {

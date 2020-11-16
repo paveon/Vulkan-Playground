@@ -4,6 +4,8 @@
 #include <imgui.h>
 #include <mathlib.h>
 #include <vulkan/vulkan_core.h>
+#include <Engine/Renderer/Renderer.h>
+
 
 #include "Engine/Input.h"
 #include "Engine/Layer.h"
@@ -97,8 +99,8 @@ public:
     }
 
     auto OnCharacterPress(CharacterPressEvent &e) -> bool override {
-        ImGuiIO &io = ImGui::GetIO();
-        io.AddInputCharacter(e.KeyCode());
+//        ImGuiIO &io = ImGui::GetIO();
+//        io.AddInputCharacter(e.KeyCode());
 
         e.Handled = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
         return true;

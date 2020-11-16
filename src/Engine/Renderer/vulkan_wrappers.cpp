@@ -12,8 +12,9 @@
 
 
 namespace vk {
-    const std::array<const char *, 1> LogicalDevice::s_RequiredExtensions = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    const std::array<const char *, 2> LogicalDevice::s_RequiredExtensions = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
     };
 
     LogicalDevice::LogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) :
@@ -30,6 +31,7 @@ namespace vk {
         bool graphicsFamilyExists = false;
         bool presentFamilyExists = false;
         bool transferFamilyExists = false;
+        bool computeFamilyExists = false;
         int fallbackTransferQueue = -1;
         for (uint32_t i = 0; i < queueFamilyCount; i++) {
             if (queueFamilies[i].queueCount > 0) {
@@ -38,6 +40,12 @@ namespace vk {
                     m_QueueIndices[static_cast<size_t>(QueueFamily::GRAPHICS)] = i;
                     uniqueQueueFamilies.insert(i);
                     graphicsFamilyExists = true;
+                }
+
+                if (!computeFamilyExists && flags & VK_QUEUE_COMPUTE_BIT) {
+                    m_QueueIndices[static_cast<size_t>(QueueFamily::COMPUTE)] = i;
+                    uniqueQueueFamilies.insert(i);
+                    computeFamilyExists = true;
                 }
 
                 if (!transferFamilyExists && flags & VK_QUEUE_TRANSFER_BIT) {
@@ -116,6 +124,13 @@ namespace vk {
         deviceFeatures.samplerAnisotropy = VK_TRUE;
         deviceFeatures.sampleRateShading = VK_TRUE;
 
+        VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
+        physicalDeviceDescriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+        physicalDeviceDescriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+        physicalDeviceDescriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
+        physicalDeviceDescriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
+        physicalDeviceDescriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
+
         VkDeviceCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         createInfo.queueCreateInfoCount = queueCreateInfos.size();
@@ -123,6 +138,7 @@ namespace vk {
         createInfo.pEnabledFeatures = &deviceFeatures;
         createInfo.enabledExtensionCount = s_RequiredExtensions.size();
         createInfo.ppEnabledExtensionNames = s_RequiredExtensions.data();
+        createInfo.pNext = &physicalDeviceDescriptorIndexingFeatures;
 
         if (vkCreateDevice(m_Physical, &createInfo, nullptr, &m_Device) != VK_SUCCESS)
             throw std::runtime_error("failed to create logical device!");
@@ -160,18 +176,151 @@ namespace vk {
     }
 
 
-    ShaderModule::ShaderModule(VkDevice device, const std::string &filename) : m_Device(device) {
-        std::vector<uint32_t> shaderCode = readFile(filename);
+    void ShaderModule::ExtractIO(const spirv_cross::CompilerGLSL &compiler,
+                                 const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
+                                 std::vector<VertexBinding> &output) {
 
-        // Reflect GLSL code
+        output.emplace_back();
+        output.back().binding = 0;  /// TODO: maybe later support multiple bindings if we use per_instance input rate?
+        output.back().inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        auto &vertexLayout = output.back().vertexLayout;
+
+        for (const auto &resource : resources) {
+            const auto &base_type = compiler.get_type(resource.base_type_id);
+            uint32_t location = compiler.get_decoration(resource.id, spv::DecorationLocation);
+            if (location >= vertexLayout.size()) vertexLayout.resize(location + 1);
+
+            VertexAttribute attribute{};
+            switch (base_type.basetype) {
+                case spirv_cross::SPIRType::BaseType::Float: {
+                    switch (base_type.width) {
+                        case 16: {
+                            switch (base_type.vecsize) {
+                                case 1:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16_SFLOAT, 2};
+                                    break;
+                                case 2:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16G16_SFLOAT, 4};
+                                    break;
+                                case 3:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16G16B16_SFLOAT, 6};
+                                    break;
+                                case 4:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16G16B16A16_SFLOAT, 8};
+                                    break;
+                                default:
+                                    throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                            }
+                        }
+                        case 32: {
+                            switch (base_type.vecsize) {
+                                case 1:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32_SFLOAT, 4};
+                                    break;
+                                case 2:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32G32_SFLOAT, 8};
+                                    break;
+                                case 3:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32G32B32_SFLOAT, 12};
+                                    break;
+                                case 4:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32G32B32A32_SFLOAT, 16};
+                                    break;
+                                default:
+                                    throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                            }
+                        }
+                    }
+                    break;
+                }
+                case spirv_cross::SPIRType::BaseType::Double: {
+                    switch (base_type.width) {
+                        case 64: {
+                            switch (base_type.vecsize) {
+                                case 1:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64_SFLOAT, 8};
+                                    break;
+                                case 2:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64G64_SFLOAT, 16};
+                                    break;
+                                case 3:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64G64B64_SFLOAT, 24};
+                                    break;
+                                case 4:
+                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64G64B64A64_SFLOAT, 32};
+                                    break;
+                                default:
+                                    throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                            }
+                        }
+                    }
+                    break;
+                }
+                default:
+                    throw std::runtime_error("[ShaderModule] Unsupported shader stage input attribute type!");
+            }
+            vertexLayout[location] = attribute;
+            std::cout << "[ShaderModule (" << m_Filepath << ")] Shader input: " << resource.name << std::endl;
+        }
+    }
+
+
+    ShaderModule::ShaderModule(VkDevice device, const std::string &filename) : m_Filepath(filename), m_Device(device) {
+        std::vector<uint32_t> shaderCode = readFile(filename);
         spirv_cross::CompilerGLSL glsl(shaderCode);
         spirv_cross::ShaderResources resources = glsl.get_shader_resources();
-        for (auto &resource : resources.stage_inputs)
-        {
-            std::cout << "[" << filename << "] " << resource.name << std::endl;
-//            unsigned set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
-//            unsigned binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-//            printf("Image %s at set = %u, binding = %u\n", resource.name.c_str(), set, binding);
+
+        ExtractIO(glsl, resources.stage_inputs, m_VertexInputBindings);
+        ExtractIO(glsl, resources.stage_outputs, m_VertexOutputBindings);
+
+        /// Extract uniform buffers
+        for (auto &resource : resources.uniform_buffers) {
+            uint32_t setIdx = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+            uint32_t bindingIdx = glsl.get_decoration(resource.id, spv::DecorationBinding);
+            const auto& baseType = glsl.get_type(resource.base_type_id);
+//            size_t memberCount = baseType.member_types.size();
+//            uint32_t totalSize = 0;
+//            for (uint32_t i = 0; i < memberCount; i++) {
+//                auto memberSize = glsl.get_declared_struct_member_size(baseType, i);
+//                totalSize += memberSize;
+//            }
+            auto size = glsl.get_declared_struct_size(baseType);
+            m_DescriptorSetLayouts[setIdx][bindingIdx] = DescriptorBinding{
+                    resource.name,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    (uint32_t)size,
+                    1
+            };
+
+            std::cout << "[ShaderModule (" << filename << ")] UBO: "
+                      << resource.name << ", Set: " << setIdx << ", Binding: " << bindingIdx << std::endl;
+        }
+
+        /// Extract sampled images
+        for (auto &resource : resources.sampled_images) {
+            DescriptorBinding binding{};
+
+            const auto &type = glsl.get_type(resource.type_id);
+            if (type.array.empty()) {
+                binding.count = 1;
+            } else {
+                binding.count = type.pointer ? 0 : type.array[0];
+            }
+
+            switch (type.basetype) {
+                case spirv_cross::SPIRType::BaseType::SampledImage:
+                    binding.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                    break;
+
+                default:
+                    throw std::runtime_error("[ShaderModule] Unsupported sampled image type!");
+            }
+            uint32_t setIdx = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+            uint32_t bindingIdx = glsl.get_decoration(resource.id, spv::DecorationBinding);
+            m_DescriptorSetLayouts[setIdx][bindingIdx] = binding;
+
+            std::cout << "[ShaderModule (" << filename << ")] Sampler: "
+                      << resource.name << ", Set: " << setIdx << ", Binding: " << bindingIdx << std::endl;
         }
 
         m_CodeSize = shaderCode.size() * sizeof(uint32_t);

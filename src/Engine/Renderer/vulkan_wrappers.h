@@ -7,6 +7,10 @@
 #include <vector>
 #include <array>
 #include <mathlib.h>
+#include <sstream>
+#include <map>
+#include <spirv_cross.hpp>
+#include <spirv_glsl.hpp>
 
 typedef struct GLFWwindow GLFWwindow;
 
@@ -15,7 +19,8 @@ enum class QueueFamily {
     GRAPHICS = 0,
     PRESENT = 1,
     TRANSFER = 2,
-    COUNT = 3
+    COMPUTE = 3,
+    COUNT = 4
 };
 
 
@@ -42,7 +47,7 @@ namespace vk {
 
         void Release() noexcept { if (m_Device) vkDestroyDevice(m_Device, nullptr); }
 
-        static const std::array<const char *, 1> s_RequiredExtensions;
+        static const std::array<const char *, 2> s_RequiredExtensions;
 
     public:
         ~LogicalDevice() { Release(); }
@@ -71,6 +76,10 @@ namespace vk {
         auto GfxQueue() const -> VkQueue { return m_Queues[static_cast<size_t>(QueueFamily::GRAPHICS)]; }
 
         auto GfxQueueIdx() const -> uint32_t { return m_QueueIndices[static_cast<size_t>(QueueFamily::GRAPHICS)]; }
+
+        auto ComputeQueue() const -> VkQueue { return m_Queues[static_cast<size_t>(QueueFamily::COMPUTE)]; }
+
+        auto ComputeQueueIdx() const -> uint32_t { return m_QueueIndices[static_cast<size_t>(QueueFamily::COMPUTE)]; }
 
         auto PresentQueue() const -> VkQueue { return m_Queues[static_cast<size_t>(QueueFamily::PRESENT)]; }
 
@@ -839,10 +848,11 @@ namespace vk {
 
         DescriptorPool() = default;
 
-        DescriptorPool(VkDevice device, const std::vector<VkDescriptorPoolSize> &poolSizes, uint32_t maxSets,
-                       VkDescriptorPoolCreateFlags flags = 0)
-                : m_Device(
-                device) {
+        DescriptorPool(VkDevice device,
+                       const std::vector<VkDescriptorPoolSize> &poolSizes,
+                       uint32_t maxSets,
+                       VkDescriptorPoolCreateFlags flags = 0) : m_Device(device) {
+
             VkDescriptorPoolCreateInfo poolInfo = {};
             poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             poolInfo.flags = flags;
@@ -907,8 +917,11 @@ namespace vk {
             allocInfo.pSetLayouts = layouts.data();
 
             m_Sets.resize(layouts.size());
-            if (vkAllocateDescriptorSets(device, &allocInfo, m_Sets.data()) != VK_SUCCESS) {
-                throw std::runtime_error("failed to allocate descriptor sets!");
+            VkResult result = vkAllocateDescriptorSets(device, &allocInfo, m_Sets.data());
+            if (result != VK_SUCCESS) {
+                std::ostringstream msg;
+                msg << "[vkAllocateDescriptorSets] Failed to allocate descriptor sets, error code: " << result;
+                throw std::runtime_error(msg.str().c_str());
             }
         }
 
@@ -961,10 +974,19 @@ namespace vk {
 
         DescriptorSetLayout(VkDevice device, const std::vector<VkDescriptorSetLayoutBinding> &bindings) : m_Device(
                 device) {
+            VkDescriptorSetLayoutBindingFlagsCreateInfoEXT ext{};
+            VkDescriptorBindingFlagsEXT bindingFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT;
+//            VkDescriptorBindingFlagsEXT bindingFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
+//                                                       VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+            ext.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
+            ext.bindingCount = bindings.size();
+            ext.pBindingFlags = &bindingFlags;
+
             VkDescriptorSetLayoutCreateInfo layoutInfo = {};
             layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             layoutInfo.bindingCount = bindings.size();
             layoutInfo.pBindings = bindings.data();
+            layoutInfo.pNext = &ext;
 
             if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
                 throw std::runtime_error("failed to create descriptor set layout!");
@@ -1197,7 +1219,40 @@ namespace vk {
 
 
     class ShaderModule {
+    public:
+        struct VertexAttribute {
+            std::string name;
+            VkFormat format;
+            uint32_t size;
+
+            auto operator==(const VertexAttribute &other) const -> bool {
+                return name == other.name && format == other.format && size == other.size;
+            }
+
+            auto operator!=(const VertexAttribute &other) const -> bool {
+                return !operator==(other);
+            }
+        };
+
+        struct VertexBinding {
+            std::vector<VertexAttribute> vertexLayout;
+            uint32_t binding;
+            VkVertexInputRate inputRate;
+        };
+
+        struct DescriptorBinding {
+            std::string name;
+            VkDescriptorType type;
+            uint32_t size;
+            uint32_t count;
+        };
+
     private:
+        std::map<uint32_t, std::map<uint32_t, DescriptorBinding>> m_DescriptorSetLayouts;
+        std::vector<VertexBinding> m_VertexInputBindings;
+        std::vector<VertexBinding> m_VertexOutputBindings;
+        std::string m_Filepath;
+
         VkDevice m_Device = nullptr;
         VkShaderModule m_Module = nullptr;
         size_t m_CodeSize = 0;
@@ -1210,6 +1265,10 @@ namespace vk {
         }
 
         void Release() noexcept { if (m_Module) vkDestroyShaderModule(m_Device, m_Module, nullptr); }
+
+        void ExtractIO(const spirv_cross::CompilerGLSL &compiler,
+                       const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
+                       std::vector<VertexBinding> &output);
 
     public:
         ShaderModule() = default;
@@ -1230,6 +1289,12 @@ namespace vk {
             Move(other);
             return *this;
         };
+
+        auto GetSetLayouts() const -> const auto & { return m_DescriptorSetLayouts; }
+
+        auto GetInputBindings() const -> const auto & { return m_VertexInputBindings; }
+
+        auto GetOutputBindings() const -> const auto & { return m_VertexOutputBindings; }
 
         auto ptr() const noexcept -> const VkShaderModule * { return &m_Module; }
 
