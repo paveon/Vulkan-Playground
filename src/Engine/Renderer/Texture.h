@@ -9,6 +9,12 @@
 
 
 class Texture2D {
+public:
+    enum class Type {
+        DIFFUSE,
+        SPECULAR
+    };
+
 protected:
     int m_Width = 0;
     int m_Height = 0;
@@ -16,6 +22,8 @@ protected:
     std::vector<unsigned char> m_Data;
 
     Texture2D(unsigned char *data, int width, int height, int channels);
+
+    static auto Create(unsigned char *data, int width, int height, int channels = 4) -> std::shared_ptr<Texture2D>;
 
 public:
     virtual ~Texture2D() = default;
@@ -34,9 +42,7 @@ public:
 
     auto MipLevels() const -> uint32_t { return std::floor(std::log2(std::max(m_Width, m_Height))) + 1; }
 
-    static auto Create(const char *filepath) -> std::unique_ptr<Texture2D>;
-
-    static auto Create(unsigned char *data, int width, int height, int channels = 4) -> std::unique_ptr<Texture2D>;
+    static auto Create(const char *filepath) -> Texture2D*;
 
     virtual void Upload() {}
 };

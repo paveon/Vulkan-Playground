@@ -13,7 +13,7 @@
 #include <Engine/Model.h>
 
 #include <Engine/Renderer/Renderer.h>
-#include <Engine/Renderer/ShaderProgram.h>
+#include <Engine/Renderer/ShaderPipeline.h>
 #include <Engine/Renderer/UniformBuffer.h>
 #include <Engine/Renderer/Material.h>
 #include <Engine/Renderer/Mesh.h>

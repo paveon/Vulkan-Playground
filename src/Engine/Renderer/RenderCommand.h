@@ -41,6 +41,8 @@ struct DepthStencil {
 //};
 
 struct SetDynamicOffsetPayload {
+    uint32_t set;
+    uint32_t binding;
     uint32_t objectIndex;
 };
 
@@ -60,6 +62,7 @@ struct DrawIndexedPayload {
 };
 
 class Mesh;
+class MeshRenderer;
 class Material;
 
 struct RenderCommand {
@@ -77,6 +80,7 @@ struct RenderCommand {
         BIND_MATERIAL,
         BIND_MESH,
         SET_UNIFORM_OFFSET,
+//        SET_UNIFORM_OFFSETS,
     };
 
     Type m_Type = Type::NONE;
@@ -127,17 +131,22 @@ struct RenderCommand {
 //    }
 
     static auto BindMaterial(const Material *material) -> RenderCommand {
-        return RenderCommand(Type::BIND_MATERIAL, sizeof(void *), &material);
+        return RenderCommand(Type::BIND_MATERIAL, sizeof(const void *), &material);
     }
 
-    static auto BindMesh(const Mesh *mesh) -> RenderCommand {
-        return RenderCommand(Type::BIND_MESH, sizeof(void *), &mesh);
+    static auto BindMeshInstance(const MeshRenderer *meshInstance) -> RenderCommand {
+        return RenderCommand(Type::BIND_MESH, sizeof(const void *), &meshInstance);
     }
 
-    static auto SetDynamicOffset(uint32_t objectIndex) -> RenderCommand {
-        SetDynamicOffsetPayload payload{objectIndex};
+    static auto SetDynamicOffset(uint32_t set, uint32_t binding, uint32_t objectIndex) -> RenderCommand {
+        SetDynamicOffsetPayload payload{set, binding, objectIndex};
         return RenderCommand(Type::SET_UNIFORM_OFFSET, sizeof(SetDynamicOffsetPayload), &payload);
     }
+
+//    static auto SetDynamicOffsets(const std::vector<uint32_t>& offsets) -> RenderCommand {
+//        SetDynamicOffsetPayload payload{objectIndex};
+//        return RenderCommand(Type::SET_UNIFORM_OFFSET, sizeof(SetDynamicOffsetPayload), &payload);
+//    }
 
     static auto Draw(const DrawPayload& payload) -> RenderCommand {
 //        DrawIndexedPayload payload{indexCount, firstIndex, vertexOffset};

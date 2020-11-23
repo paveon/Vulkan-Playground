@@ -24,7 +24,7 @@ public:
 
     Window(const Window& other) = delete;
 
-    Window& operator=(const Window& other) = delete;
+    auto operator=(const Window& other) -> Window& = delete;
 
     virtual ~Window() = default;
 

@@ -4,11 +4,12 @@
 #include <vector>
 #include <memory>
 #include <Engine/Events/WindowEvents.h>
-#include <unordered_set>
+#include <unordered_map>
 #include "RendererAPI.h"
 #include "RenderCommand.h"
 
 
+class MeshRenderer;
 class RenderPass;
 class Model;
 class ModelInstance;
@@ -18,10 +19,7 @@ class PerspectiveCamera;
 class Scene {
 public:
     std::vector<const Mesh*> m_Meshes;
-    std::vector<const Model*> m_Models;
-    std::unordered_set<const Model*> m_ModelSet;
-    std::unordered_set<Material*> m_MaterialSet;
-    std::vector<const ModelInstance*> m_ModelInstances;
+    std::unordered_map<const Material*, std::vector<const MeshRenderer*>> m_MaterialBatches;
     std::shared_ptr<PerspectiveCamera> m_Camera;
 
     Scene() = default;
@@ -89,6 +87,8 @@ public:
     static void EndScene();
 
     static void SubmitMesh(const Mesh* mesh);
+
+    static void SubmitMeshRenderer(const MeshRenderer* mesh);
 
     static void SubmitModel(const Model* model);
 

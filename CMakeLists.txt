@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(Game_Engine)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpessimizing-move -Wredundant-move")
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -55,8 +55,13 @@ target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 target_compile_definitions(${PROJECT_NAME} PRIVATE BASE_DIR="${PROJECT_SOURCE_DIR}")
 target_include_directories(${PROJECT_NAME} PUBLIC ${Vulkan_INCLUDE_DIRS}/vulkan)
 
-#message(${Vulkan_INCLUDE_DIRS})
+add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/bin/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> ${PROJECT_SOURCE_DIR}/bin/sandbox
+)
 
+#message(${Vulkan_INCLUDE_DIRS})
 
 
 file(GLOB_RECURSE GLSL_SOURCE_FILES
@@ -64,7 +69,7 @@ file(GLOB_RECURSE GLSL_SOURCE_FILES
         "shaders/*.vert.glsl"
         )
 
-foreach(GLSL ${GLSL_SOURCE_FILES})
+foreach (GLSL ${GLSL_SOURCE_FILES})
     get_filename_component(FILE_NAME ${GLSL} NAME)
     string(REGEX REPLACE "\\.[^.]*$" "" FILE_NAME ${FILE_NAME})
     set(SPIRV "${PROJECT_BINARY_DIR}/shaders/${FILE_NAME}.spv")
@@ -72,9 +77,10 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
             OUTPUT ${SPIRV}
             COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
             COMMAND glslangValidator -V ${GLSL} -o ${SPIRV}
-            DEPENDS ${GLSL})
+            DEPENDS ${GLSL}
+    )
     list(APPEND SPIRV_BINARY_FILES ${SPIRV})
-endforeach(GLSL)
+endforeach (GLSL)
 
 add_custom_target(
         Shaders
@@ -83,9 +89,8 @@ add_custom_target(
 
 add_dependencies(${PROJECT_NAME} Shaders)
 
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders/"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${PROJECT_BINARY_DIR}/shaders"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
-        )
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_BINARY_DIR}/shaders" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
+)

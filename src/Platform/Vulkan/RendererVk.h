@@ -60,8 +60,7 @@ public:
 
     void impl_StageMesh(Mesh *mesh) override {
         /// TODO: will break when mesh is released
-        mesh->m_ResourceID = m_MeshAllocations.size();
-        m_MeshAllocations[mesh->m_ResourceID] = MeshAllocationMetadata();
+        m_MeshAllocations[mesh->MeshID()] = MeshAllocationMetadata();
         m_StageBuffer.StageMesh(mesh);
     }
 

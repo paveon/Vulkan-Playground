@@ -287,7 +287,8 @@ namespace vk {
             auto size = glsl.get_declared_struct_size(baseType);
             m_DescriptorSetLayouts[setIdx][bindingIdx] = DescriptorBinding{
                     resource.name,
-                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+//                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     (uint32_t)size,
                     1
             };

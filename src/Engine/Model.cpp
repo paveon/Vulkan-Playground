@@ -2,51 +2,51 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <glm/gtx/string_cast.hpp>
 
+#include <Engine/Renderer/UniformBuffer.h>
 #include "Model.h"
 #include "Renderer/Mesh.h"
 #include "Renderer/Camera.h"
 
 
-void Model::SetMaterial(Material *material,
-                        std::pair<uint32_t, uint32_t> samplerBinding,
-                        std::pair<uint32_t, uint32_t> materialBinding) {
-    if (!m_Material || m_Material != material) {
-        m_Material = material;
+std::unique_ptr<UniformBuffer> Entity::s_TransformsUB;
+std::vector<glm::vec3> Entity::s_Positions;
+std::vector<glm::vec3> Entity::s_Scales;
+std::vector<glm::vec3> Entity::s_Rotations;
+std::vector<glm::mat4> Entity::s_ModelMatrices;
+std::vector<glm::mat4> Entity::s_NormalMatrices;
+uint32_t Entity::s_InstanceCount = 0;
 
-        std::vector<const Texture2D *> usedTextures;
-        for (const auto &modelMaterial : m_ModelMaterials) {
-            for (const auto &meshTexture : modelMaterial) {
-                const auto *texPtr = meshTexture.texture.get();
-                if (std::find(usedTextures.begin(), usedTextures.end(), texPtr) == usedTextures.end()) {
-                    usedTextures.emplace_back(texPtr);
-                }
-            }
-        }
-        auto textureIndices = m_Material->BindTextures(usedTextures, samplerBinding.first, samplerBinding.second);
-        std::vector<std::unordered_map<MeshTexture::Type, uint32_t>> partitionedIndices(m_ModelMaterials.size());
-        size_t offset = 0;
-        for (size_t matIdx = 0; matIdx < m_ModelMaterials.size(); matIdx++) {
-            for (const auto &meshTexture : m_ModelMaterials[matIdx]) {
-                partitionedIndices[matIdx].insert({meshTexture.type, textureIndices[offset]});
-                offset++;
-            }
-        }
 
-        for (const auto &mesh : m_Meshes) {
-            mesh->SetMaterial(m_Material, materialBinding, partitionedIndices[mesh->AssimpMaterialIdx()]);
-        }
+void Entity::AllocateTransformsUB(uint32_t entityCount) {
+    s_TransformsUB = UniformBuffer::Create("Transforms UB", sizeof(TransformUBO), entityCount);
+}
+
+
+void Entity::UpdateTransformsUB(const PerspectiveCamera &camera) {
+    std::vector<TransformUBO> ubos(s_InstanceCount);
+    for (size_t i = 0; i < s_InstanceCount; i++) {
+        ubos[i].model = s_ModelMatrices[i];
+        ubos[i].view = camera.GetView();
+        ubos[i].viewModel = camera.GetView() * s_ModelMatrices[i];
+        ubos[i].mvp = camera.GetProjection() * ubos[i].viewModel;
+        ubos[i].normalMatrix = camera.GetView() * s_NormalMatrices[i];
+//        ubos[i].normalMatrix = glm::transpose(glm::inverse(camera.GetView() * m_ModelMatrices[i]));
+
+//        ubos[i].normalMatrix = m_NormalMatrices[i] * camera.GetView();
+//        std::fill(ubos.begin(), ubos.end(), TransformUBO{mvp, viewModel, normalMatrix});
     }
+    s_TransformsUB->SetData(ubos.data(), s_InstanceCount, 0);
 }
 
 
-Model::Model(const std::string &filepath) : m_Directory(filepath.substr(0, filepath.find_last_of('/'))) {
-    loadModel(filepath, {MeshTexture::Type::SPECULAR, MeshTexture::Type::DIFFUSE});
-}
+auto ModelAsset::LoadModel(const std::string &filepath) -> std::unique_ptr<ModelAsset> {
 
-
-void Model::loadModel(const std::string &filepath, const std::vector<MeshTexture::Type> &textureTypes) {
-    static std::unordered_map<std::string, std::shared_ptr<Texture2D>> loadedTextures;
+    static std::unordered_map<Texture2D::Type, aiTextureType> textureTypes{
+            {Texture2D::Type::SPECULAR, aiTextureType_SPECULAR},
+            {Texture2D::Type::DIFFUSE,  aiTextureType_DIFFUSE}
+    };
 
     Assimp::Importer importer;
     const aiScene *scene = importer.ReadFile(filepath, aiProcess_Triangulate |
@@ -57,75 +57,73 @@ void Model::loadModel(const std::string &filepath, const std::vector<MeshTexture
                                                        aiProcess_OptimizeGraph);
     if (!scene || scene->mFlags & (unsigned) AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
-        return;
+        return {};
     }
 
-    std::vector<std::pair<MeshTexture::Type, aiTextureType>> typePairs;
-    for (const auto &type : textureTypes) {
-        switch (type) {
-            case MeshTexture::Type::DIFFUSE:
-                typePairs.emplace_back(type, aiTextureType_DIFFUSE);
-                break;
-            case MeshTexture::Type::SPECULAR:
-                typePairs.emplace_back(type, aiTextureType_SPECULAR);
-                break;
-            default:
-                assert(false);
-        }
-    }
 
-    m_ModelMaterials.resize(scene->mNumMaterials);
-    for (size_t materialIdx = 0; materialIdx < m_ModelMaterials.size(); materialIdx++) {
-        aiMaterial *material = scene->mMaterials[materialIdx];
+    auto asset = std::make_unique<ModelAsset>();
+    asset->m_Materials.reserve(scene->mNumMaterials);
 
-        for (const auto &type : typePairs) {
-            auto textureCount = material->GetTextureCount(type.second);
+    aiString tmp;
+    for (size_t materialIdx = 0; materialIdx < scene->mNumMaterials; materialIdx++) {
+        aiMaterial *sourceMaterial = scene->mMaterials[materialIdx];
+        asset->m_Materials.emplace_back(sourceMaterial->GetName().C_Str());
+
+        for (const auto &type : textureTypes) {
+            auto textureCount = sourceMaterial->GetTextureCount(type.second);
+            auto &textures = asset->m_Textures.emplace(type.first, std::vector<const Texture2D *>()).first->second;
             for (unsigned int i = 0; i < textureCount; i++) {
-                aiString str;
-                material->GetTexture(type.second, i, &str);
-                std::string textureName(str.C_Str());
-                auto it = loadedTextures.find(textureName);
-                if (it == loadedTextures.end()) {
-                    std::string path = std::string(BASE_DIR "/textures/") + str.C_Str();
-                    std::shared_ptr<Texture2D> tex = Texture2D::Create(path.c_str());
-                    tex->Upload();
-                    it = loadedTextures.insert({textureName, tex}).first;
-                }
-                m_ModelMaterials[materialIdx].emplace_back(MeshTexture{it->second, type.first});
+                sourceMaterial->GetTexture(type.second, i, &tmp);
+                std::string textureName(tmp.C_Str());
+                std::string path = std::string(BASE_DIR "/textures/") + textureName;
+                textures.emplace_back(Texture2D::Create(path.c_str()));
+//                asset->m_Materials[materialIdx].BindTextures(type.first, Texture2D::Create(path.c_str()));
             }
         }
     }
 
-    processNode(scene->mRootNode, scene);
-}
-
-
-void Model::processNode(const aiNode *node, const aiScene *scene) {
-    for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-        aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-        m_Meshes.push_back(Mesh::Create(mesh));
+    asset->m_Meshes.reserve(scene->mNumMeshes);
+    for (size_t i = 0; i < scene->mNumMeshes; i++) {
+        const auto *sourceMesh = scene->mMeshes[i];
+        asset->m_Meshes.emplace_back(sourceMesh, sourceMesh->mMaterialIndex);
     }
 
-    for (unsigned int i = 0; i < node->mNumChildren; i++) {
-        processNode(node->mChildren[i], scene);
-    }
+    return asset;
 }
 
-void Model::SetTransformUniformData(const PerspectiveCamera &camera, uint32_t set, uint32_t binding) const {
-    std::vector<TransformUBO> ubos(m_Meshes.size());
-//    size_t offset = 0;
-    for (size_t i = 0; i < m_InstanceCount; i++) {
-        glm::mat4 viewModel = camera.GetView() * m_InstanceModelMatrices[i];
-        glm::mat4 mvp = camera.GetProjection() * viewModel;
-        glm::mat4 normalMatrix = m_InstanceNormalMatrices[i] * camera.GetView();
-        std::fill(ubos.begin(), ubos.end(), TransformUBO{mvp, viewModel, normalMatrix});
-        m_Material->SetDynamicUniforms(set, binding, m_Meshes[0]->GetMaterialObjectIdx(), ubos);
-    }
-}
 
-auto Model::Cube() -> Model {
-    Model cube;
-    cube.AttachMesh(Mesh::Cube());
-    return Model();
-}
+//void Model::SetMaterial(Material *material,
+//                        std::pair<uint32_t, uint32_t> samplerBinding,
+//                        std::pair<uint32_t, uint32_t> materialBinding) {
+//    if (!m_Material || m_Material != material) {
+//        m_Material = material;
+//
+//        std::vector<const Texture2D *> usedTextures;
+//        for (const auto &modelMaterial : m_ModelMaterials) {
+//            for (const auto &meshTexture : modelMaterial) {
+//                const auto *texPtr = meshTexture.texture.get();
+//                if (std::find(usedTextures.begin(), usedTextures.end(), texPtr) == usedTextures.end()) {
+//                    usedTextures.emplace_back(texPtr);
+//                }
+//            }
+//        }
+//        auto textureIndices = m_Material->BindTextures(usedTextures, samplerBinding.first, samplerBinding.second);
+//        std::vector<std::unordered_map<MeshTexture::Type, uint32_t>> partitionedIndices(m_ModelMaterials.size());
+//        size_t offset = 0;
+//        for (size_t matIdx = 0; matIdx < m_ModelMaterials.size(); matIdx++) {
+//            for (const auto &meshTexture : m_ModelMaterials[matIdx]) {
+//                partitionedIndices[matIdx].insert({meshTexture.type, textureIndices[offset]});
+//                offset++;
+//            }
+//        }
+//
+//        for (const auto &mesh : m_Meshes) {
+//            mesh->SetMaterial(m_Material, materialBinding, partitionedIndices[mesh->AssimpMaterialIdx()]);
+//        }
+//    }
+//}
+
+
+
+
 

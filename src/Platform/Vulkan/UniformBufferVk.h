@@ -3,25 +3,20 @@
 
 #include <Engine/Renderer/UniformBuffer.h>
 #include <Engine/Renderer/vulkan_wrappers.h>
-#include <Engine/Application.h>
-#include "GraphicsContextVk.h"
 
+class Device;
 
 class UniformBufferVk : public UniformBuffer {
-//    GfxContextVk &m_Context;
     Device *m_Device = nullptr;
-//    vk::DeviceMemory m_Memory;
-//    vk::Buffer m_Buffer;
-
     VkDeviceMemory m_Memory = nullptr;
     VkBuffer m_Buffer = nullptr;
     VkDeviceSize m_BufferSubSize = 0;
     VkDeviceSize m_BaseOffset = 0;
     uint32_t m_ImageCount = 0;
-    bool m_Dynamic = false;
+    bool m_PerObject = false;
 
 public:
-    explicit UniformBufferVk(size_t objectSize, bool dynamic);
+    explicit UniformBufferVk(std::string name, size_t objectSize, bool perObject);
 
     void Allocate(size_t objectCount);
 
@@ -31,9 +26,9 @@ public:
 
     auto BaseOffset() const -> auto { return m_BaseOffset; }
 
-    auto IsDynamic() const -> bool { return m_Dynamic; }
+    auto IsDynamic() const -> bool { return m_PerObject; }
 
-    void SetData(const void *objectData, size_t objectCount) override;
+    void SetData(const void *objectData, size_t objectCount, uint32_t offset) const override;
 };
 
 

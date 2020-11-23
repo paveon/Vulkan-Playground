@@ -18,6 +18,9 @@
 #include <unordered_set>
 
 
+uint32_t Mesh::s_MeshIdCounter = 0;
+
+
 namespace std {
     template<>
     struct hash<tinyobj::index_t> {
@@ -221,19 +224,16 @@ auto Mesh::FromOBJ(const char *filepath) -> std::unique_ptr<Mesh> {
 }
 
 
-auto Mesh::Create(const aiMesh *sourceMesh) -> std::unique_ptr<Mesh> {
-    auto mesh(std::make_unique<Mesh>());
-    auto &vertexData = mesh->m_VertexData;
-    auto &indices = mesh->m_Indices;
-
-    mesh->m_VertexLayout.push_back(sizeof(Vertex::position));
-    mesh->m_VertexLayout.push_back(sizeof(Vertex::normal));
-    mesh->m_VertexLayout.push_back(sizeof(Vertex::texCoords));
+Mesh::Mesh(const aiMesh *sourceMesh, uint32_t assimpMaterialIdx)
+        : m_MeshID(s_MeshIdCounter++), m_AssimpMaterialIdx(assimpMaterialIdx) {
+    m_VertexLayout.push_back(sizeof(Vertex::position));
+    m_VertexLayout.push_back(sizeof(Vertex::normal));
+    m_VertexLayout.push_back(sizeof(Vertex::texCoords));
     uint32_t vertexSize = sizeof(Vertex);
-    mesh->m_VertexSize = vertexSize;
+    m_VertexSize = vertexSize;
 
-    vertexData.resize(sourceMesh->mNumVertices * vertexSize);
-    auto *vertexPtr = reinterpret_cast<Vertex *>(vertexData.data());
+    m_VertexData.resize(sourceMesh->mNumVertices * vertexSize);
+    auto *vertexPtr = reinterpret_cast<Vertex *>(m_VertexData.data());
     for (unsigned int i = 0; i < sourceMesh->mNumVertices; i++) {
         vertexPtr->position.x = sourceMesh->mVertices[i].x;
         vertexPtr->position.y = sourceMesh->mVertices[i].y;
@@ -251,58 +251,57 @@ auto Mesh::Create(const aiMesh *sourceMesh) -> std::unique_ptr<Mesh> {
     for (unsigned int i = 0; i < sourceMesh->mNumFaces; i++) {
         const aiFace &face = sourceMesh->mFaces[i];
         for (unsigned int j = 0; j < face.mNumIndices; j++)
-            indices.push_back(face.mIndices[j]);
+            m_Indices.push_back(face.mIndices[j]);
     }
-    mesh->m_VertexCount = sourceMesh->mNumVertices;
-    mesh->m_AssimpMaterialIdx = sourceMesh->mMaterialIndex;
-    return mesh;
+    m_VertexCount = sourceMesh->mNumVertices;
+    m_AssimpMaterialIdx = sourceMesh->mMaterialIndex;
 }
 
 
-void Mesh::SetMaterial(Material *material,
-                       const std::pair<uint32_t, uint32_t> &materialBinding,
-                       const std::unordered_map<MeshTexture::Type, uint32_t> &textureIndices) {
-
-    const auto &materialLayout = material->VertexLayout();
-    if (m_VertexLayout.size() != materialLayout.size()) {
-        std::ostringstream msg;
-        msg << "[SetMaterial] Mismatch between the number of Mesh (" << m_VertexLayout.size()
-            << ") and ShaderProgram (" << materialLayout.size() << ") vertex attributes.";
-        throw std::runtime_error(msg.str().c_str());
-    }
-    size_t minAttribs = std::min(m_VertexLayout.size(), materialLayout.size());
-    for (size_t i = 0; i < minAttribs; i++) {
-        if (m_VertexLayout[i] != materialLayout[i]) {
-            std::ostringstream msg;
-            msg << "[SetMaterial] Mismatch between the size of Mesh (" << (int) m_VertexLayout[i]
-                << " bytes) and ShaderProgram (" << (int) materialLayout[i]
-                << " bytes) vertex attribute at location(" << i << ")";
-            throw std::runtime_error(msg.str().c_str());
-        }
-    }
-
-    if (m_Material) {
-        m_Material->OnDetach();
-    }
-
-    m_Material = material;
-    m_ObjectIdx = material->OnAttach();
-
-    MaterialUBO ubo{
-            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
-            glm::vec4(1.0f),
-            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
-            32.0f,
-            0,
-            0,
-            0
-    };
-
-    auto it = textureIndices.find(MeshTexture::Type::DIFFUSE);
-    if (it != textureIndices.end()) ubo.diffuseTexIdx = it->second;
-
-    it = textureIndices.find(MeshTexture::Type::SPECULAR);
-    if (it != textureIndices.end()) ubo.specularTexIdx = it->second;
-
-    m_Material->SetDynamicUniform(materialBinding.first, materialBinding.second, m_ObjectIdx, ubo);
-}
+//void Mesh::SetMaterial(Material *material,
+//                       const std::pair<uint32_t, uint32_t> &materialBinding,
+//                       const std::unordered_map<Texture2D::Type, uint32_t> &textureIndices) {
+//
+//    const auto &materialLayout = material->VertexLayout();
+//    if (m_VertexLayout.size() != materialLayout.size()) {
+//        std::ostringstream msg;
+//        msg << "[SetMaterial] Mismatch between the number of Mesh (" << m_VertexLayout.size()
+//            << ") and ShaderProgram (" << materialLayout.size() << ") vertex attributes.";
+//        throw std::runtime_error(msg.str().c_str());
+//    }
+//    size_t minAttribs = std::min(m_VertexLayout.size(), materialLayout.size());
+//    for (size_t i = 0; i < minAttribs; i++) {
+//        if (m_VertexLayout[i] != materialLayout[i]) {
+//            std::ostringstream msg;
+//            msg << "[SetMaterial] Mismatch between the size of Mesh (" << (int) m_VertexLayout[i]
+//                << " bytes) and ShaderProgram (" << (int) materialLayout[i]
+//                << " bytes) vertex attribute at location(" << i << ")";
+//            throw std::runtime_error(msg.str().c_str());
+//        }
+//    }
+//
+//    if (m_Material) {
+//        m_Material->OnDetach();
+//    }
+//
+//    m_Material = material;
+//    m_ObjectIdx = material->OnAttach();
+//
+//    MaterialUBO ubo{
+//            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+//            glm::vec4(1.0f),
+//            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+//            32.0f,
+//            0,
+//            0,
+//            0
+//    };
+//
+//    auto it = textureIndices.find(Texture2D::Type::DIFFUSE);
+//    if (it != textureIndices.end()) ubo.diffuseTexIdx = it->second;
+//
+//    it = textureIndices.find(Texture2D::Type::SPECULAR);
+//    if (it != textureIndices.end()) ubo.specularTexIdx = it->second;
+//
+//    m_Material->SetDynamicUniform(materialBinding.first, materialBinding.second, m_ObjectIdx, ubo);
+//}

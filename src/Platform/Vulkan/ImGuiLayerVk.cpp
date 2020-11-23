@@ -3,7 +3,9 @@
 #include <Engine/Application.h>
 #include <examples/imgui_impl_vulkan.h>
 #include <examples/imgui_impl_glfw.h>
+
 #include "RendererVk.h"
+#include "GraphicsContextVk.h"
 
 
 ImGuiLayerVk::~ImGuiLayerVk() {
@@ -20,7 +22,20 @@ static void check_vk_result(VkResult err) {
 }
 
 
-//Initialize all Vulkan resources used by the ui
+ImGuiLayerVk::ImGuiLayerVk() :
+        ImGuiLayer(),
+        m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
+        m_Device(m_Context.GetDevice()),
+        m_RenderPass(nullptr) {}
+
+
+void ImGuiLayerVk::OnAttach(const LayerStack *stack) {
+    ImGuiLayer::OnAttach(stack);
+    ImGuiLayer::ConfigureImGui(m_Context.FramebufferSize());
+    InitResources();
+}
+
+
 void ImGuiLayerVk::InitResources() {
     auto imgCount = m_Context.Swapchain().ImageCount();
 
@@ -44,7 +59,7 @@ void ImGuiLayerVk::InitResources() {
     m_CmdPool = m_Device.createCommandPool(m_Device.GfxQueueIdx(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     m_CmdBuffers = m_Device.createCommandBuffers(*m_CmdPool, imgCount);
 
-    m_RenderPass = (VkRenderPass)Renderer::GetRenderPass().VkHandle();
+    m_RenderPass = (VkRenderPass) Renderer::GetRenderPass().VkHandle();
 
 //    auto extent = m_Context.Swapchain().Extent();
 //    const auto& imgViews = m_Context.Swapchain().ImageViews();

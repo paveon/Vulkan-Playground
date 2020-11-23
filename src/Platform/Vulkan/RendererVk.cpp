@@ -11,7 +11,7 @@
 #include <Engine/Renderer/Material.h>
 
 #include "RendererVk.h"
-#include "PipelineVk.h"
+#include "ShaderPipelineVk.h"
 #include <examples/imgui_impl_vulkan.h>
 #include <Engine/Core.h>
 
@@ -155,6 +155,8 @@ auto RendererVk::AcquireNextImage() -> uint32_t {
 }
 
 void RendererVk::DrawFrame() {
+    static std::unordered_map<BindingKey, uint32_t> uniformObjectOffsets;
+
     vk::CommandBuffer primaryCmdBuffer(m_GfxCmdBuffers->get(m_ImageIndex));
 
     primaryCmdBuffer.Begin();
@@ -177,9 +179,10 @@ void RendererVk::DrawFrame() {
     vkCmdSetViewport(primaryCmdBuffer.data(), 0, 1, &m_Viewport);
     vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
 
+    uniformObjectOffsets.clear();
     RenderCommand *cmd = nullptr;
-    PipelineVk *boundPipeline = nullptr;
-
+    ShaderPipelineVk *boundPipeline = nullptr;
+    uint32_t boundMeshInstance = 0;
     while ((cmd = m_CmdQueue.GetNextCommand()) != nullptr) {
         switch (cmd->m_Type) {
             case RenderCommand::Type::SET_CLEAR_COLOR: {
@@ -214,13 +217,14 @@ void RendererVk::DrawFrame() {
 //            }
             case RenderCommand::Type::BIND_MATERIAL: {
                 auto *material = cmd->UnpackData<Material *>();
-                boundPipeline = static_cast<PipelineVk*>(&material->GetPipeline());
-                boundPipeline->Bind(primaryCmdBuffer.data(), m_ImageIndex);
+                boundPipeline = static_cast<ShaderPipelineVk *>(&material->GetPipeline());
+                boundPipeline->Bind(primaryCmdBuffer.data(), m_ImageIndex, material->GetMaterialID());
                 break;
             }
             case RenderCommand::Type::BIND_MESH: {
-                auto *mesh = cmd->UnpackData<Mesh *>();
-                auto it = m_MeshAllocations.find(mesh->m_ResourceID);
+                const auto *meshInstance = cmd->UnpackData<const MeshRenderer *>();
+                const auto *mesh = meshInstance->GetMesh();
+                auto it = m_MeshAllocations.find(mesh->MeshID());
                 if (it == m_MeshAllocations.end())
                     assert(false);
                 const auto &meshInfo = it->second;
@@ -237,15 +241,19 @@ void RendererVk::DrawFrame() {
                                          VK_INDEX_TYPE_UINT32);
                 }
 
-                boundPipeline->SetDynamicOffsets(mesh->GetMaterialObjectIdx());
+                boundMeshInstance = meshInstance->GetMaterialInstance().InstanceID();
+//                auto materialID = meshInstance->GetMaterial();
+//                boundPipeline->SetDynamicOffsets(instanceID);
+//                boundPipeline->SetDynamicOffsets(mesh->GetMaterialObjectIdx());
                 break;
             }
             case RenderCommand::Type::SET_UNIFORM_OFFSET: {
                 auto payload = cmd->UnpackData<SetDynamicOffsetPayload>();
-                boundPipeline->SetDynamicOffsets(payload.objectIndex);
+                uniformObjectOffsets[BindingKey(payload.set, payload.binding)] = payload.objectIndex;
                 break;
             }
             case RenderCommand::Type::DRAW: {
+                boundPipeline->SetDynamicOffsets(boundMeshInstance, uniformObjectOffsets);
                 auto payload = cmd->UnpackData<DrawPayload>();
                 vkCmdDraw(primaryCmdBuffer.data(),
                           payload.vertexCount,
@@ -255,6 +263,7 @@ void RendererVk::DrawFrame() {
                 break;
             }
             case RenderCommand::Type::DRAW_INDEXED: {
+                boundPipeline->SetDynamicOffsets(boundMeshInstance, uniformObjectOffsets);
                 auto payload = cmd->UnpackData<DrawIndexedPayload>();
                 vkCmdDrawIndexed(primaryCmdBuffer.data(),
                                  payload.indexCount,

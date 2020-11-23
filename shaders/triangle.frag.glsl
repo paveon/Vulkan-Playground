@@ -44,9 +44,9 @@ layout(std430, set=1, binding=0) uniform MaterialData {
     vec4 diffuse;
     vec4 specular;
     float shininess;
-    uint diffuseTexIdx;
-    uint specularTexIdx;
-    uint emissionTexIdx;
+    int diffuseTexIdx;
+    int specularTexIdx;
+    int emissionTexIdx;
 } materialUBO;
 
 layout(std430, set=2, binding=0) uniform ObjectData {

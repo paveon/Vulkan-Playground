@@ -2,13 +2,11 @@
 #define GAME_ENGINE_IMGUILAYERVK_H
 
 #include <Engine/ImGui/ImGuiLayer.h>
-#include <Engine/Application.h>
-#include "GraphicsContextVk.h"
+#include <Engine/Renderer/vulkan_wrappers.h>
 
-//struct PushConstBlock {
-//    math::vec2 scale;
-//    math::vec2 translate;
-//} pushConstBlock;
+
+class GfxContextVk;
+class Device;
 
 
 class ImGuiLayerVk : public ImGuiLayer {
@@ -18,7 +16,6 @@ private:
 
     vk::DescriptorPool *m_DescriptorPool = nullptr;
     VkRenderPass m_RenderPass;
-//    VkRenderPass m_RenderPass = nullptr;
 
     vk::CommandPool *m_CmdPool = nullptr;
     vk::CommandBuffers *m_CmdBuffers = nullptr;
@@ -36,21 +33,11 @@ private:
     void InitResources();
 
 public:
-    explicit ImGuiLayerVk() :
-            ImGuiLayer(),
-            m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
-            m_Device(m_Context.GetDevice()),
-            m_RenderPass(nullptr)
-//            m_RenderPass((VkRenderPass)m_Renderer.GetRenderPass().VkHandle())
-            {}
+    ImGuiLayerVk();
 
     ~ImGuiLayerVk() override;
 
-    void OnAttach(const LayerStack* stack) override {
-        ImGuiLayer::OnAttach(stack);
-        ImGuiLayer::ConfigureImGui(m_Context.FramebufferSize());
-        InitResources();
-    }
+    void OnAttach(const LayerStack* stack) override;
 
     // Update vertex and index buffer containing the imGui elements when required
     // void UpdateBuffers(size_t frameIndex);

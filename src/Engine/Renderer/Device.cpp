@@ -202,7 +202,7 @@ void RingStageBuffer::StageMesh(const Mesh *mesh) {
             m_EndOffset,
             dataSize,
             DataType::MESH_DATA,
-            mesh->m_ResourceID
+            mesh->MeshID()
     });
     std::vector<VkBufferCopy> &regions = m_Metadata.back().copyRegions;
     if (m_EndOffset + dataSize > m_Size) {

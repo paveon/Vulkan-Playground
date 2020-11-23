@@ -5,11 +5,12 @@
 
 class UniformBuffer {
 protected:
-    UniformBuffer() = default;
-
+    std::string m_Name;
     uint64_t m_BufferSize = 0;
     uint32_t m_ObjectSize = 0;
     uint32_t m_ObjectSizeAligned = 0;
+
+    explicit UniformBuffer(std::string name) : m_Name(std::move(name)) {}
 
 public:
     virtual ~UniformBuffer() = default;
@@ -22,9 +23,9 @@ public:
 
 //    virtual auto VkHandle() const -> const void* { return nullptr; }
 
-    virtual void SetData(const void *objectData, size_t objectCount) = 0;
+    virtual void SetData(const void *objectData, size_t objectCount, uint32_t offset) const = 0;
 
-    static auto Create(size_t objectSize, size_t objectCount) -> std::unique_ptr<UniformBuffer>;
+    static auto Create(std::string name, size_t objectSize, size_t objectCount) -> std::unique_ptr<UniformBuffer>;
 };
 
 

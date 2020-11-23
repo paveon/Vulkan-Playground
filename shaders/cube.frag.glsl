@@ -25,37 +25,36 @@ struct PointLight{
 
 struct SpotLight {
     vec4 position;
-    vec4  direction;
+    vec4 direction;
     vec4 ambient;
     vec4 diffuse;
     vec4 specular;
     vec4 cutOffs;
 };
 
-layout(std430, set=0, binding = 0) uniform SceneData {
+layout(set=1, binding = 0) uniform sampler2D texSamplers[];
+
+layout(std430, set=2, binding = 0) uniform SceneData {
     vec4 cameraPos;
     DirectionalLight light;
     SpotLight spotLight;
     int pointLightCount;
 } sceneUBO;
 
-layout(std430, set=1, binding=0) uniform MaterialData {
+const uint MAX_LIGHTS = 5;
+layout(std430, set=3, binding=0) uniform LightsUBO {
+    PointLight pointLights[MAX_LIGHTS];
+} lightsUBO;
+
+layout(std430, set=4, binding=0) uniform MaterialData {
     vec4 ambient;
     vec4 diffuse;
     vec4 specular;
     float shininess;
-    uint diffuseTexIdx;
-    uint specularTexIdx;
-    uint emissionTexIdx;
+    int diffuseTexIdx;
+    int specularTexIdx;
+    int emissionTexIdx;
 } materialUBO;
-
-layout(set=3, binding = 0) uniform sampler2D texSamplers[];
-
-
-const uint MAX_LIGHTS = 5;
-layout(std430, set=4, binding=0) uniform LightsUBO {
-    PointLight pointLights[MAX_LIGHTS];
-} lightsUBO;
 
 
 vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec4 diffTexel, vec4 specTexel) {
@@ -108,10 +107,10 @@ vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec
 
 
 void main() {
-//    vec2 flippedTexCoords = vec2(TexCoords.x, 1 - TexCoords.y);
+    vec2 flippedTexCoords = vec2(TexCoords.x, 1 - TexCoords.y);
 
-    vec4 diffuseTexel = texture(texSamplers[materialUBO.diffuseTexIdx], TexCoords);
-    vec4 specularTexel = texture(texSamplers[materialUBO.specularTexIdx], TexCoords);
+    vec4 diffuseTexel = materialUBO.diffuseTexIdx >= 0 ? texture(texSamplers[materialUBO.diffuseTexIdx], TexCoords) : vec4(0.0f);
+    vec4 specularTexel = materialUBO.specularTexIdx >= 0 ? texture(texSamplers[materialUBO.specularTexIdx], TexCoords) : vec4(0.0f);
     vec3 norm = normalize(Normal);
     vec3 eyeDir = normalize(-FragPos);
 
@@ -122,6 +121,7 @@ void main() {
         result += CalcPointLight(lightsUBO.pointLights[i], norm, FragPos, eyeDir, diffuseTexel, specularTexel);
     }
 
-//    outColor = vec4(1.0f, 1.0f, 1.0f, 1.0f);
     outColor = vec4(result, 1.0f);
+
+//    outColor = vec4(norm, 1.0f);
 }

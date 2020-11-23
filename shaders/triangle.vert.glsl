@@ -9,6 +9,12 @@ layout(location = 0) out vec3 Normal;
 layout(location = 1) out vec3 FragPos;
 layout(location = 2) out vec2 FragTexCoord;
 
+layout(std430, set=0, binding = 0) uniform TransformUBO {
+    mat4 mvp;
+    mat4 viewModel;
+    mat4 normalMatrix;
+} transformUBO;
+
 layout(std430, set=2, binding = 0) uniform ObjectData {
     mat4 mvp;
     mat4 viewModel;

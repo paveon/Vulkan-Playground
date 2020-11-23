@@ -14,9 +14,9 @@ public:
 
     virtual void RecreateSwapchain() = 0;
 
-    virtual std::pair<uint32_t, uint32_t> FramebufferSize() const = 0;
+    virtual auto FramebufferSize() const -> std::pair<uint32_t, uint32_t> = 0;
 
-    static std::unique_ptr<GfxContext> Create(void *windowHandle);
+    static auto Create(void *windowHandle) -> std::unique_ptr<GfxContext>;
 };
 
 #endif //VULKAN_GRAPHICSCONTEXT_H
