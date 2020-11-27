@@ -154,7 +154,7 @@ public:
 
     auto operator=(Material &&other) noexcept -> Material & = default;
 
-    auto CreateInstance(BindingKey) -> MaterialInstance;
+    auto CreateInstance() -> MaterialInstance;
 
     auto GetInstanceCount() const { return m_InstanceCount; }
 

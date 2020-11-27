@@ -7,7 +7,7 @@
 auto RenderPass::Create() -> std::unique_ptr<RenderPass> {
    switch (RendererAPI::GetSelectedAPI()) {
       case RendererAPI::API::VULKAN:
-         return std::make_unique<RenderPassVk>();
+         return std::make_unique<RenderPassVk>(true);
    }
 
    return nullptr;

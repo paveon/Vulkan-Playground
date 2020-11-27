@@ -11,6 +11,8 @@ struct BindingKey {
 
     BindingKey() = default;
 
+    BindingKey(uint32_t value) : value(value) {}
+
     BindingKey(uint32_t set, uint32_t binding) : value((set << 16ul) + binding) {}
 
     auto Set() const { return (value & 0xFFFF0000u) >> 16u; }
@@ -152,7 +154,6 @@ protected:
     std::vector<uint8_t> m_VertexLayout;
     std::unordered_map<BindingKey, Uniform> m_ShaderUniforms;
 
-    std::unordered_map<BindingKey, std::vector<const Texture2D *>> m_BoundTextures;
     std::unordered_map<uint32_t, const Material *> m_BoundMaterials;
     uint32_t m_MaterialCount = 0;
 
@@ -165,7 +166,8 @@ public:
                        const std::vector<std::pair<const char *, ShaderType>> &shaders,
                        const std::vector<BindingKey> &perObjectUniforms,
                        const RenderPass &renderPass,
-                       const std::vector<PushConstant> &pushConstants,
+                       uint32_t subpassIndex,
+                       std::pair<VkCullModeFlags, VkFrontFace> culling,
                        bool enableDepthTest) -> std::unique_ptr<ShaderPipeline>;
 
     auto OnAttach(const Material *material) -> uint32_t {

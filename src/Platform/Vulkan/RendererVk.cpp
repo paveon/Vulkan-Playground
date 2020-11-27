@@ -12,8 +12,15 @@
 
 #include "RendererVk.h"
 #include "ShaderPipelineVk.h"
-#include <examples/imgui_impl_vulkan.h>
+#include "RenderPassVk.h"
+#include <backends/imgui_impl_vulkan.h>
 #include <Engine/Core.h>
+
+
+const std::vector<std::pair<const char *, ShaderType>> RendererVk::POST_PROCESS_SHADERS{
+        {POST_PROCESS_VS_PATH, ShaderType::VERTEX_SHADER},
+        {POST_PROCESS_FS_PATH, ShaderType::FRAGMENT_SHADER}
+};
 
 
 RendererVk::RendererVk() :
@@ -25,11 +32,23 @@ RendererVk::RendererVk() :
         m_UniformBuffer(&m_Device, 10'000'000) {
 
     vk::Swapchain &swapchain(m_Context.Swapchain());
+    const auto &swapchainViews = swapchain.ImageViews();
     auto extent = swapchain.Extent();
     auto imgFormat = swapchain.ImageFormat();
     auto maxImgCount = swapchain.Capabilities().maxImageCount;
 
-    m_RenderPass = RenderPass::Create();
+    m_RenderPass = std::make_unique<RenderPassVk>(true);
+    m_RenderPass2 = std::make_unique<RenderPassVk>(false);
+
+    m_PostprocessPipeline = std::make_unique<ShaderPipelineVk>(std::string("Post Process Pipeline"),
+                                                               POST_PROCESS_SHADERS,
+                                                               std::vector<BindingKey>{},
+                                                               *m_RenderPass2,
+                                                               0,
+                                                               std::make_pair(VK_CULL_MODE_NONE,
+                                                                              VK_FRONT_FACE_COUNTER_CLOCKWISE),
+                                                               false);
+
 
     m_GfxCmdPool = m_Device.createCommandPool(m_Device.queueIndex(QueueFamily::GRAPHICS),
                                               VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
@@ -46,28 +65,68 @@ RendererVk::RendererVk() :
 
     VkExtent2D maxExtent{1920, 1080}; // Temporary hack
 
+    m_ColorImages.emplace_back(m_Device, std::set<uint32_t>{m_Device.GfxQueueIdx()},
+                               extent, 1,
+                                                     VK_SAMPLE_COUNT_1_BIT,
+                                                     imgFormat,
+                                                     VK_IMAGE_TILING_OPTIMAL,
+                                                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                                     VK_IMAGE_USAGE_SAMPLED_BIT);
+    m_ColorImages.emplace_back(m_Device, std::set<uint32_t>{m_Device.GfxQueueIdx()},
+                               extent, 1,
+                               VK_SAMPLE_COUNT_1_BIT,
+                               imgFormat,
+                               VK_IMAGE_TILING_OPTIMAL,
+                               VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                               VK_IMAGE_USAGE_SAMPLED_BIT);
+    m_ColorImages.emplace_back(m_Device, std::set<uint32_t>{m_Device.GfxQueueIdx()},
+                               extent, 1,
+                               VK_SAMPLE_COUNT_1_BIT,
+                               imgFormat,
+                               VK_IMAGE_TILING_OPTIMAL,
+                               VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                               VK_IMAGE_USAGE_SAMPLED_BIT);
+
     m_ColorImage = m_Device.createImage(
-            {m_Device.queueIndex(QueueFamily::GRAPHICS)},
-            maxExtent, 1,
+            {m_Device.GfxQueueIdx()},
+            extent, 1,
             Device::maxSamples(),
             imgFormat, VK_IMAGE_TILING_OPTIMAL,
             VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 
     m_DepthImage = m_Device.createImage(
             {m_Device.queueIndex(QueueFamily::GRAPHICS)},
-            maxExtent, 1,
+            extent, 1,
             Device::maxSamples(),
             m_Device.findDepthFormat(), VK_IMAGE_TILING_OPTIMAL,
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
-    m_ImageMemory = m_Device.allocateImageMemory({m_ColorImage, m_DepthImage}, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    std::vector<const vk::Image*> images{
+        m_ColorImage,
+        m_DepthImage,
+        &m_ColorImages[0],
+        &m_ColorImages[1],
+        &m_ColorImages[2],
+    };
 
-    auto alignment = roundUp(m_ColorImage->MemoryInfo().size, m_DepthImage->MemoryInfo().alignment);
+    m_ImageMemory = m_Device.allocateImageMemory(images, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    auto offset = roundUp(m_ColorImage->MemoryInfo().size, m_DepthImage->MemoryInfo().alignment);
     m_ColorImage->BindMemory(m_ImageMemory->data(), 0);
-    m_DepthImage->BindMemory(m_ImageMemory->data(), alignment);
+    m_DepthImage->BindMemory(m_ImageMemory->data(), offset);
+    offset = roundUp(offset + m_DepthImage->MemoryInfo().size, m_ColorImages[0].MemoryInfo().alignment);
+    m_ColorImages[0].BindMemory(m_ImageMemory->data(), offset);
+    offset = roundUp(offset + m_ColorImages[0].MemoryInfo().size, m_ColorImages[1].MemoryInfo().alignment);
+    m_ColorImages[1].BindMemory(m_ImageMemory->data(), offset);
+    offset = roundUp(offset + m_ColorImages[1].MemoryInfo().size, m_ColorImages[2].MemoryInfo().alignment);
+    m_ColorImages[2].BindMemory(m_ImageMemory->data(), offset);
 
     m_ColorImageView = m_Device.createImageView(*m_ColorImage, VK_IMAGE_ASPECT_COLOR_BIT);
     m_DepthImageView = m_Device.createImageView(*m_DepthImage, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    m_ColorViews.emplace_back(m_Device, m_ColorImages[0], VK_IMAGE_ASPECT_COLOR_BIT);
+    m_ColorViews.emplace_back(m_Device, m_ColorImages[1], VK_IMAGE_ASPECT_COLOR_BIT);
+    m_ColorViews.emplace_back(m_Device, m_ColorImages[2], VK_IMAGE_ASPECT_COLOR_BIT);
 
     vk::CommandBuffer setupCmdBuffer = m_GfxCmdBuffers->get(0);
     setupCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
@@ -80,15 +139,26 @@ RendererVk::RendererVk() :
 
     vkQueueWaitIdle(m_Device.queue(QueueFamily::GRAPHICS));
 
-    std::vector<VkImageView> attachments{nullptr, m_DepthImageView->data()};
+    std::vector<VkImageView> offscreenAttachments{nullptr, m_DepthImageView->data()};
     if (Device::maxSamples() != VK_SAMPLE_COUNT_1_BIT) {
-        attachments.push_back(m_ColorImageView->data());
+        offscreenAttachments.push_back(m_ColorImageView->data());
     }
 
-    for (const vk::ImageView &view : swapchain.ImageViews()) {
-        attachments.front() = view.data();
-        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass->VkHandle(), attachments);
-        m_Framebuffers.push_back(buffer);
+    std::vector<VkImageView> vkViews;
+    for (const vk::ImageView &view : m_ColorViews) {
+        offscreenAttachments.front() = view.data();
+        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass->VkHandle(), offscreenAttachments);
+        m_OffscreenFBOs.push_back(buffer);
+        vkViews.push_back(view.data());
+    }
+    m_PostprocessPipeline->BindTextures(vkViews, BindingKey(0, 0));
+
+
+    std::vector<VkImageView> attachments(1);
+    for (const vk::ImageView &swapchainView : swapchainViews) {
+        attachments[0] = swapchainView.data();
+        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass2->VkHandle(), attachments);
+        m_FBOs.push_back(buffer);
     }
 
     createSyncObjects();
@@ -112,27 +182,27 @@ void RendererVk::createSyncObjects() {
 }
 
 
-void RendererVk::RecreateSwapchain() {
-    vkDeviceWaitIdle(m_Device);
-
-    m_Context.RecreateSwapchain();
-    auto extent = m_Context.Swapchain().Extent();
-
-    m_RenderPass = RenderPass::Create();
-
-    // TODO: Image or depth format might possibly change with swapchain recreation
-    std::vector<VkImageView> attachments{nullptr, m_DepthImageView->data()};
-    if (Device::maxSamples() != VK_SAMPLE_COUNT_1_BIT) {
-        attachments.push_back(m_ColorImageView->data());
-    }
-
-    m_Framebuffers.clear();
-    for (const vk::ImageView &view : m_Context.Swapchain().ImageViews()) {
-        attachments.front() = view.data();
-        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass->VkHandle(), attachments);
-        m_Framebuffers.push_back(buffer);
-    }
-}
+//void RendererVk::RecreateSwapchain() {
+//    vkDeviceWaitIdle(m_Device);
+//
+//    m_Context.RecreateSwapchain();
+//    auto extent = m_Context.Swapchain().Extent();
+//
+//    m_RenderPass = RenderPass::Create();
+//
+//    // TODO: Image or depth format might possibly change with swapchain recreation
+//    std::vector<VkImageView> attachments{nullptr, m_DepthImageView->data()};
+//    if (Device::maxSamples() != VK_SAMPLE_COUNT_1_BIT) {
+//        attachments.push_back(m_ColorImageView->data());
+//    }
+//
+//    m_OffscreenFBOs.clear();
+//    for (const vk::ImageView &view : m_Context.Swapchain().ImageViews()) {
+//        attachments.front() = view.data();
+//        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass->VkHandle(), attachments);
+//        m_Framebuffers.push_back(buffer);
+//    }
+//}
 
 
 auto RendererVk::AcquireNextImage() -> uint32_t {
@@ -160,8 +230,6 @@ void RendererVk::DrawFrame() {
     vk::CommandBuffer primaryCmdBuffer(m_GfxCmdBuffers->get(m_ImageIndex));
 
     primaryCmdBuffer.Begin();
-
-    auto *currentFramebuffer = m_Framebuffers[m_ImageIndex]->data();
     VkRenderPassBeginInfo renderPassBeginInfo = {};
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass->VkHandle();
@@ -169,7 +237,7 @@ void RendererVk::DrawFrame() {
     renderPassBeginInfo.clearValueCount = m_ClearValues.size();
     renderPassBeginInfo.pClearValues = m_ClearValues.data();
     renderPassBeginInfo.renderArea.extent = m_Context.Swapchain().Extent();
-    renderPassBeginInfo.framebuffer = currentFramebuffer;
+    renderPassBeginInfo.framebuffer = m_OffscreenFBOs[m_ImageIndex]->data();
 
     // The primary command buffer does not contain any rendering commands
     // These are stored (and retrieved) from the secondary command buffers
@@ -280,13 +348,38 @@ void RendererVk::DrawFrame() {
         }
     }
 
-//    vkCmdExecuteCommands(primaryCmdBuffer.data(), submitBuffers.size(), submitBuffers.data());
+//    if (m_ImGuiLayer) {
+//        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), primaryCmdBuffer.data());
+//    }
+//    /// ImGui fucks up viewport and scissor and doesn't restore it after the draw -_-
+//    /// TODO: write my own ImGuI renderer
+//    vkCmdSetViewport(primaryCmdBuffer.data(), 0, 1, &m_Viewport);
+//    vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
 
-    if (m_ImGuiLayer) {
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), primaryCmdBuffer.data());
-    }
+//    vkCmdNextSubpass(primaryCmdBuffer.data(), VK_SUBPASS_CONTENTS_INLINE);
 
+    //    vkCmdExecuteCommands(primaryCmdBuffer.data(), submitBuffers.size(), submitBuffers.data());
     vkCmdEndRenderPass(primaryCmdBuffer.data());
+
+    {
+        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass2->VkHandle();
+        renderPassBeginInfo.renderArea.offset = {0, 0};
+        renderPassBeginInfo.clearValueCount = m_ClearValues.size();
+        renderPassBeginInfo.pClearValues = m_ClearValues.data();
+        renderPassBeginInfo.renderArea.extent = m_Context.Swapchain().Extent();
+        renderPassBeginInfo.framebuffer = m_FBOs[m_ImageIndex]->data();
+        vkCmdBeginRenderPass(primaryCmdBuffer.data(), &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        VkViewport vp{0, 0, m_Viewport.width, m_Viewport.y, 0.0f, 1.0f};
+        vkCmdSetViewport(primaryCmdBuffer.data(), 0, 1, &vp);
+        vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
+
+        m_PostprocessPipeline->Bind(primaryCmdBuffer.data(), m_ImageIndex, std::optional<uint32_t>());
+        m_PostprocessPipeline->PushConstants(primaryCmdBuffer.data(), 0, m_ImageIndex);
+        vkCmdDraw(primaryCmdBuffer.data(), 3, 1, 0, 0);
+        vkCmdEndRenderPass(primaryCmdBuffer.data());
+    }
 
     primaryCmdBuffer.End();
 
@@ -328,7 +421,7 @@ void RendererVk::DrawFrame() {
 }
 
 void RendererVk::impl_OnWindowResize(WindowResizeEvent &) {
-    RecreateSwapchain();
+//    RecreateSwapchain();
 }
 
 void RendererVk::impl_WaitIdle() const {

@@ -7,57 +7,35 @@
 #include "TextureVk.h"
 
 
-//static auto ShaderTypeToVkFormat(ShaderAttributeType type) -> VkFormat {
-//    switch (type) {
-//        case ShaderAttributeType::Float:
-//            return VK_FORMAT_R32_SFLOAT;
-//        case ShaderAttributeType::Float2:
-//            return VK_FORMAT_R32G32_SFLOAT;
-//        case ShaderAttributeType::Float3:
-//            return VK_FORMAT_R32G32B32_SFLOAT;
-//        case ShaderAttributeType::Float4:
-//            return VK_FORMAT_R32G32B32A32_SFLOAT;
-//        case ShaderAttributeType::UInt:
-//            return VK_FORMAT_R8G8B8A8_UNORM;
-//    }
-//
-//    throw std::runtime_error("[ShaderTypeToVkFormat] Unsupported shader vertex attribute type");
-//}
+static auto ShaderTypeToStageFlagBit(ShaderType type) -> VkShaderStageFlagBits {
+    switch (type) {
+        case ShaderType::VERTEX_SHADER:
+            return VK_SHADER_STAGE_VERTEX_BIT;
+        case ShaderType::GEOMETRY_SHADER:
+            return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case ShaderType::TESSELATION_SHADER:
+            return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case ShaderType::FRAGMENT_SHADER:
+            return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case ShaderType::COMPUTE_SHADER:
+            return VK_SHADER_STAGE_COMPUTE_BIT;
+    }
 
-//static auto VertexInputRateToVk(VertexBindingInputRate rate) -> VkVertexInputRate {
-//    switch (rate) {
-//        case VertexBindingInputRate::PER_VERTEX:
-//            return VK_VERTEX_INPUT_RATE_VERTEX;
-//        case VertexBindingInputRate::PER_INSTANCE:
-//            return VK_VERTEX_INPUT_RATE_INSTANCE;
-//    }
-//
-//    throw std::runtime_error("[VertexInputRateToVk] Unsupported input rate");
-//}
-
-//static auto DescriptorTypeToVk(DescriptorType type) -> VkDescriptorType {
-//    switch (type) {
-//        case DescriptorType::Texture:
-//            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-//        case DescriptorType::UniformBuffer:
-//            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-//        case DescriptorType::UniformBufferDynamic:
-//            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-//    }
-//
-//    throw std::runtime_error("[DescriptorTypeToVk] Unsupported descriptor type");
-//}
+    throw std::runtime_error("[ShaderTypeToStageFlag] Unsupported shader type");
+}
 
 
 ShaderPipelineVk::ShaderPipelineVk(std::string name,
                                    const std::vector<std::pair<const char *, ShaderType>> &shaders,
                                    const std::vector<BindingKey> &perObjectUniforms,
                                    const RenderPass &renderPass,
-                                   const std::vector<PushConstant> &pushConstants,
+                                   uint32_t subpassIndex,
+                                   std::pair<VkCullModeFlags, VkFrontFace> culling,
                                    bool enableDepthTest) :
         ShaderPipeline(std::move(name)),
         m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
-        m_Device(m_Context.GetDevice()) {
+        m_Device(m_Context.GetDevice()),
+        m_SubpassIndex(subpassIndex) {
 
     auto &device = static_cast<GfxContextVk &>(Application::GetGraphicsContext()).GetDevice();
     const auto &renderPassVk = static_cast<const RenderPassVk &>(renderPass);
@@ -65,40 +43,111 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
 
     for (const auto&[filepath, shaderType] : shaders) {
         auto *module = device.createShaderModule(filepath);
+        auto shaderStageBit = ShaderTypeToStageFlagBit(shaderType);
+
+        /// Merge active ranges from all modules
+        for (const auto&[index, range] : module->GetPushRanges()) {
+            auto it = m_PushRanges.find(index);
+            if (it != m_PushRanges.end()) {
+                it->second.stageFlags |= shaderStageBit;
+            } else {
+                m_PushRanges[index] = {
+                        shaderStageBit,
+                        range.offset,
+                        range.size
+                };
+            }
+        }
 
         /// Merge descriptor set layouts from all stages
-        for (const auto&[setIdx, setLayout] : module->GetSetLayouts()) {
-            auto &layout = m_DescriptorBindings[setIdx];
-            for (const auto&[bindingIdx, binding] : setLayout) {
-                if (layout.find(bindingIdx) == layout.end()) {
-                    layout[bindingIdx] = binding;
+        for (const auto&[bindingKeyValue, binding] : module->GetSetLayouts()) {
+            BindingKey bindingKey(bindingKeyValue);
+            if (m_DescriptorBindings.find(bindingKey) == m_DescriptorBindings.end()) {
+                m_DescriptorBindings[bindingKey] = binding;
 
-                    if (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-                        binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+                if (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
+                    binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
 
-                        m_UniformSlots.emplace_back(setIdx, bindingIdx);
-                        const BindingKey& key = m_UniformSlots.back();
+                    m_UniformSlots.emplace_back(bindingKey);
+                    const BindingKey &key = m_UniformSlots.back();
 
-                        bool perObject = std::find(perObjectUniforms.begin(), perObjectUniforms.end(), key) !=
-                                         perObjectUniforms.end();
-                        m_ShaderUniforms.emplace(key, ShaderPipeline::Uniform{
-                                binding.name,
-                                binding.size,
-                                perObject
-                        });
-                        std::ostringstream ubName;
-                        ubName << "Default UB {" << setIdx << ";" << bindingIdx << "}";
-                        m_DefaultUBs.emplace(
-                                std::piecewise_construct,
-                                std::forward_as_tuple(key),
-                                std::forward_as_tuple(ubName.str(), binding.size, perObject)
-                        );
-                    }
+                    bool perObject = std::find(perObjectUniforms.begin(), perObjectUniforms.end(), key) !=
+                                     perObjectUniforms.end();
+                    m_ShaderUniforms.emplace(key, ShaderPipeline::Uniform{
+                            binding.name,
+                            binding.size,
+                            perObject
+                    });
+                    std::ostringstream ubName;
+                    ubName << "Default UB {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
+                    m_DefaultUBs.emplace(
+                            std::piecewise_construct,
+                            std::forward_as_tuple(key),
+                            std::forward_as_tuple(ubName.str(), binding.size, perObject)
+                    );
                 }
             }
         }
         m_ShaderModules[shaderType] = module;
     }
+
+    /// TODO: expects contiguous set and binding numbers
+    std::vector<std::vector<VkDescriptorSetLayoutBinding>> layoutDescriptions;
+    for (const auto &[bindingKey, binding] : m_DescriptorBindings) {
+        uint32_t setIdx = bindingKey.Set();
+        uint32_t bindingIdx = bindingKey.Binding();
+        if (setIdx >= layoutDescriptions.size())
+            layoutDescriptions.resize(setIdx + 1);
+
+        auto &setBindings = layoutDescriptions[setIdx];
+        if (bindingIdx >= setBindings.size())
+            setBindings.resize(bindingIdx + 1);
+
+        /// TODO: how to deal with arrays of textures without specified size?
+        uint32_t descriptorCount = binding.count == 0 ? 10 : binding.count;
+        m_PoolSizes.emplace_back();
+        m_PoolSizes.back().type = binding.type;
+        m_PoolSizes.back().descriptorCount = descriptorCount;
+
+        setBindings[bindingIdx].descriptorType = binding.type;
+        setBindings[bindingIdx].binding = bindingIdx;
+        setBindings[bindingIdx].descriptorCount = descriptorCount;
+
+        /// TODO: this is hardcoded, must store the info somewhere in the shader program
+        switch (binding.type) {
+            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                setBindings[bindingIdx].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+                break;
+
+            case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+            case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+                setBindings[bindingIdx].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+                break;
+
+            default:
+                throw std::runtime_error("Unsupported descriptor type");
+        }
+    }
+
+    if (!layoutDescriptions.empty()) {
+        m_DescriptorPool = m_Device.createDescriptorPool(m_PoolSizes, imgCount * layoutDescriptions.size());
+        for (const auto &bindings : layoutDescriptions) {
+            m_DescriptorSetLayouts.emplace_back(m_Device.createDescriptorSetLayout(bindings)->data());
+        }
+
+        /// Create multiple sets for each layout to accomodate for double/triple buffering
+        /// Layouts are intertwined so we can bind all sets for one image with a single vkCmdBindDescriptorSets call
+        std::vector<VkDescriptorSetLayout> setCreationLayouts;
+        for (size_t imageIdx = 0; imageIdx < imgCount; imageIdx++) {
+            for (const auto &setLayout : m_DescriptorSetLayouts) {
+                setCreationLayouts.emplace_back(setLayout);
+            }
+        }
+
+        m_DescriptorSets = m_Device.createDescriptorSets(*m_DescriptorPool, setCreationLayouts);
+    }
+
+
     std::sort(m_UniformSlots.begin(), m_UniformSlots.end(),
               [](const BindingKey &l, const BindingKey &r) { return l.value < r.value; });
 
@@ -160,69 +209,12 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
 
 
     m_Sampler = m_Device.createSampler(0.0);
-
-    std::vector<std::vector<VkDescriptorSetLayoutBinding>> layoutDescriptions;
-    for (const auto &[setIdx, setLayout] : m_DescriptorBindings) {
-        layoutDescriptions.emplace_back();
-        std::vector<VkDescriptorSetLayoutBinding> &bindings(layoutDescriptions.back());
-        for (const auto&[bindingIdx, setBinding] : setLayout) {
-            /// TODO: how to deal with arrays of textures without specified size?
-            uint32_t descriptorCount = setBinding.count == 0 ? 10 : setBinding.count;
-            m_PoolSizes.emplace_back();
-            m_PoolSizes.back().type = setBinding.type;
-            m_PoolSizes.back().descriptorCount = descriptorCount;
-
-            bindings.emplace_back();
-            VkDescriptorSetLayoutBinding &binding = bindings.back();
-            binding.descriptorType = setBinding.type;
-            binding.binding = bindingIdx;
-            binding.descriptorCount = descriptorCount;
-
-            /// TODO: this is hardcoded, must store the info somewhere in the shader program
-            switch (setBinding.type) {
-                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-                    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-                    break;
-
-                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-                    binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-                    break;
-
-                default:
-                    throw std::runtime_error("Unsupported descriptor type");
-            }
-        }
-    }
-
-    m_DescriptorPool = m_Device.createDescriptorPool(m_PoolSizes, imgCount * layoutDescriptions.size());
-    for (const auto &bindings : layoutDescriptions) {
-        m_DescriptorSetLayouts.emplace_back(m_Device.createDescriptorSetLayout(bindings)->data());
-    }
-
-    /// Create multiple sets for each layout to accomodate for double/triple buffering
-    /// Layouts are intertwined so we can bind all sets for one image at the same time
-    std::vector<VkDescriptorSetLayout> setCreationLayouts;
-    for (size_t imageIdx = 0; imageIdx < imgCount; imageIdx++) {
-        for (const auto &setLayout : m_DescriptorSetLayouts) {
-            setCreationLayouts.emplace_back(setLayout);
-        }
-    }
-
-    m_DescriptorSets = m_Device.createDescriptorSets(*m_DescriptorPool, setCreationLayouts);
-
     m_Cache = m_Device.createPipelineCache(0, nullptr);
 
-    uint32_t currentOffset = 0;
-    m_Ranges.resize(pushConstants.size());
-    for (size_t i = 0; i < m_Ranges.size(); i++) {
-        m_Ranges[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        m_Ranges[i].size = pushConstants[i].size;
-        m_Ranges[i].offset = currentOffset;
-        currentOffset += pushConstants[i].size;
-    }
+    std::vector<VkPushConstantRange> ranges(m_PushRanges.size());
+    std::transform(m_PushRanges.begin(), m_PushRanges.end(), ranges.begin(), [](auto kv) { return kv.second; });
 
-    m_PipelineLayout = m_Device.createPipelineLayout(m_DescriptorSetLayouts, m_Ranges);
+    m_PipelineLayout = m_Device.createPipelineLayout(m_DescriptorSetLayouts, ranges);
 
     m_InputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     m_InputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -232,8 +224,10 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
     m_Rasterizer.polygonMode = VK_POLYGON_MODE_FILL; //Fill polygons
     m_Rasterizer.lineWidth = 1.0f; //Single fragment line width
 //    m_Rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; //Back-face culling
-    m_Rasterizer.cullMode = VK_CULL_MODE_NONE; //Back-face culling
-    m_Rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //Front-facing polygons have vertices in clockwise order
+//    m_Rasterizer.cullMode = VK_CULL_MODE_NONE; //Back-face culling
+//    m_Rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //Front-facing polygons have vertices in clockwise order
+    m_Rasterizer.cullMode = culling.first;
+    m_Rasterizer.frontFace = culling.second;
 
     m_BlendAttachmentState.blendEnable = VK_TRUE;
     m_BlendAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
@@ -294,6 +288,7 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
     m_PipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     m_PipelineCreateInfo.layout = m_PipelineLayout->data();
     m_PipelineCreateInfo.renderPass = renderPassVk.data();
+    m_PipelineCreateInfo.subpass = m_SubpassIndex;
     m_PipelineCreateInfo.pInputAssemblyState = &m_InputAssembly;
     m_PipelineCreateInfo.pRasterizationState = &m_Rasterizer;
     m_PipelineCreateInfo.pColorBlendState = &m_ColorBlendState;
@@ -315,7 +310,6 @@ void ShaderPipelineVk::Recreate(const RenderPass &renderPass) {
     for (auto &m_PoolSize : m_PoolSizes)
         m_PoolSize.descriptorCount = imgCount;
 
-//    std::vector<VkDescriptorSetLayout> layouts(imgCount, m_DescriptorSetLayouts->data());
     std::vector<VkDescriptorSetLayout> setCreationLayouts;
     for (size_t imageIdx = 0; imageIdx < imgCount; imageIdx++) {
         for (const auto &setLayout : m_DescriptorSetLayouts) {
@@ -393,10 +387,9 @@ void ShaderPipelineVk::AllocateResources() {
 }
 
 
-void ShaderPipelineVk::Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t materialID) {
+void ShaderPipelineVk::Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex, std::optional<uint32_t> materialID) {
     m_CmdBuffer = cmdBuffer;
     m_ImageIndex = imageIndex;
-    m_CurrentMaterialID = materialID;
 
     uint32_t setCount = m_DescriptorSetLayouts.size();  /// Number of layouts == stride
     uint32_t firstSet = setCount * m_ImageIndex;
@@ -406,33 +399,35 @@ void ShaderPipelineVk::Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint
     for (size_t i = 0; i < m_UniformSlots.size(); i++) {
         auto ubIt = m_ActiveUBs.find(m_UniformSlots[i]);
         if (ubIt != m_ActiveUBs.end()) {
-            const auto& [isDefault, ub] = ubIt->second;
-            if (isDefault) {
-                auto it = m_MaterialBufferOffsets.find(MaterialKey(m_UniformSlots[i], materialID));
+            const auto&[isDefault, ub] = ubIt->second;
+            if (isDefault && materialID.has_value()) {
+                auto it = m_MaterialBufferOffsets.find(MaterialKey(m_UniformSlots[i], materialID.value()));
                 if (it != m_MaterialBufferOffsets.end()) {
                     m_BaseDynamicOffsets[i] = it->second;
                 } else {
                     /// TODO: use logging library and replace many of those exception throws with warning messages
                     std::ostringstream msg;
-                    msg << "[ShaderPipelineVk::Bind] Missing base dynamic offset for material '" << materialID << "'";
+                    msg << "[ShaderPipelineVk::Bind] Missing base dynamic offset for material '"
+                        << materialID.value() << "'";
                     throw std::runtime_error(msg.str().c_str());
                 }
-            }
-            else {
+            } else {
                 m_BaseDynamicOffsets[i] = 0;
             }
         }
     }
 
-    /// Bind all necessary sets for this image at once
-    vkCmdBindDescriptorSets(m_CmdBuffer,
-                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            m_PipelineLayout->data(),
-                            0,
-                            setCount,
-                            &m_DescriptorSets->get(firstSet),
-                            m_BaseDynamicOffsets.size(),
-                            m_BaseDynamicOffsets.data());
+    if (setCount > 0) {
+        /// Bind all necessary sets for this image at once
+        vkCmdBindDescriptorSets(m_CmdBuffer,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                m_PipelineLayout->data(),
+                                0,
+                                setCount,
+                                &m_DescriptorSets->get(firstSet),
+                                m_BaseDynamicOffsets.size(),
+                                m_BaseDynamicOffsets.data());
+    }
 }
 
 
@@ -464,7 +459,7 @@ void ShaderPipelineVk::SetDynamicOffsets(uint32_t objectIndex,
 
         auto activeIt = m_ActiveUBs.find(bindingKey);
         if (activeIt != m_ActiveUBs.end()) {
-            const auto& [isDefault, activeUB] = activeIt->second;
+            const auto&[isDefault, activeUB] = activeIt->second;
             if (activeUB->IsDynamic()) {
                 dynamicOffsets[i] += activeUB->ObjectSizeAligned() * offset;
             }
@@ -495,7 +490,7 @@ void ShaderPipelineVk::BindUniformBuffer(const UniformBuffer *buffer, BindingKey
     /// User-bound buffers have higher precedence over default buffers
     auto activeIt = m_ActiveUBs.find(bindingKey);
     if (activeIt != m_ActiveUBs.end()) {
-        const auto& [isDefault, activeUB] = activeIt->second;
+        const auto&[isDefault, activeUB] = activeIt->second;
         if (activeUB == bufferVk)
             return;
 
@@ -527,10 +522,20 @@ void ShaderPipelineVk::BindUniformBuffer(const UniformBuffer *buffer, BindingKey
 auto ShaderPipelineVk::BindTextures(const std::vector<const Texture2D *> &textures,
                                     BindingKey bindingKey) -> std::vector<uint32_t> {
 
+    std::vector<VkImageView> textureImageViews(textures.size());
+    std::transform(textures.begin(), textures.end(), textureImageViews.begin(), [](const Texture2D *tex) {
+        return static_cast<const Texture2DVk *>(tex)->View().data();
+    });
+    return BindTextures(textureImageViews, bindingKey);
+}
+
+auto ShaderPipelineVk::BindTextures(const std::vector<VkImageView> &textures,
+                                    BindingKey bindingKey) -> std::vector<uint32_t> {
+
     /// Update binding metadata and return continuous indices of newly bound textures
     auto it = m_BoundTextures.find(bindingKey);
     if (it == m_BoundTextures.end()) {
-        it = m_BoundTextures.emplace(bindingKey, std::vector<const Texture2D *>()).first;
+        it = m_BoundTextures.emplace(bindingKey, std::vector<VkImageView>()).first;
     }
     auto &boundTextures = it->second;
     std::vector<uint32_t> texIndices(textures.size());
@@ -543,9 +548,8 @@ auto ShaderPipelineVk::BindTextures(const std::vector<const Texture2D *> &textur
 
     std::vector<VkDescriptorImageInfo> textureDescriptors(boundTextures.size());
     for (size_t i = 0; i < boundTextures.size(); i++) {
-        const auto *textureVk = static_cast<const Texture2DVk *>(boundTextures[i]);
         textureDescriptors[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        textureDescriptors[i].imageView = textureVk->View().data();
+        textureDescriptors[i].imageView = boundTextures[i];
         textureDescriptors[i].sampler = m_Sampler->data();
     }
 
@@ -566,7 +570,6 @@ auto ShaderPipelineVk::BindTextures(const std::vector<const Texture2D *> &textur
 
     return texIndices;
 }
-
 
 void ShaderPipelineVk::SetUniformData(uint32_t materialID,
                                       BindingKey bindingKey,
@@ -592,7 +595,7 @@ void ShaderPipelineVk::SetUniformData(uint32_t materialID,
     /// TODO: do we want to write into user-bound buffers too?
     auto activeIt = m_ActiveUBs.find(bindingKey);
     if (activeIt != m_ActiveUBs.end()) {
-        auto& [isDefault, activeUB] = activeIt->second;
+        auto&[isDefault, activeUB] = activeIt->second;
         if (isDefault) {
             activeUB->SetData(objectData, objectCount, offsetIt->second);
         }

@@ -1181,12 +1181,12 @@ namespace vk {
             samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
             samplerInfo.magFilter = VK_FILTER_LINEAR;
             samplerInfo.minFilter = VK_FILTER_LINEAR;
-            samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
             samplerInfo.anisotropyEnable = VK_TRUE;
             samplerInfo.maxAnisotropy = 16;
-            samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+            samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
             samplerInfo.unnormalizedCoordinates = VK_FALSE;
             samplerInfo.compareEnable = VK_FALSE;
             samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
@@ -1248,7 +1248,8 @@ namespace vk {
         };
 
     private:
-        std::map<uint32_t, std::map<uint32_t, DescriptorBinding>> m_DescriptorSetLayouts;
+        std::unordered_map<uint32_t, DescriptorBinding> m_DescriptorSetLayouts;
+        std::unordered_map<uint32_t, VkPushConstantRange> m_PushRanges;
         std::vector<VertexBinding> m_VertexInputBindings;
         std::vector<VertexBinding> m_VertexOutputBindings;
         std::string m_Filepath;
@@ -1289,6 +1290,8 @@ namespace vk {
             Move(other);
             return *this;
         };
+
+        auto GetPushRanges() const -> const auto& { return m_PushRanges; }
 
         auto GetSetLayouts() const -> const auto & { return m_DescriptorSetLayouts; }
 

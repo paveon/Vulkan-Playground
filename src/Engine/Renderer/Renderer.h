@@ -86,13 +86,7 @@ public:
 
     static void EndScene();
 
-    static void SubmitMesh(const Mesh* mesh);
-
     static void SubmitMeshRenderer(const MeshRenderer* mesh);
-
-    static void SubmitModel(const Model* model);
-
-    static void SubmitModelInstance(const ModelInstance* instance);
 
 //    static void StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) {
 //        s_Renderer->impl_StageData(dstBufferHandle, dstOffsetHandle, data, bytes);

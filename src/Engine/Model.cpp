@@ -31,8 +31,8 @@ void Entity::UpdateTransformsUB(const PerspectiveCamera &camera) {
         ubos[i].view = camera.GetView();
         ubos[i].viewModel = camera.GetView() * s_ModelMatrices[i];
         ubos[i].mvp = camera.GetProjection() * ubos[i].viewModel;
-        ubos[i].normalMatrix = camera.GetView() * s_NormalMatrices[i];
-//        ubos[i].normalMatrix = glm::transpose(glm::inverse(camera.GetView() * m_ModelMatrices[i]));
+        ubos[i].normalMatrix = glm::transpose(glm::inverse(camera.GetView() * s_ModelMatrices[i]));
+//        ubos[i].normalMatrix = camera.GetView() * s_NormalMatrices[i];
 
 //        ubos[i].normalMatrix = m_NormalMatrices[i] * camera.GetView();
 //        std::fill(ubos.begin(), ubos.end(), TransformUBO{mvp, viewModel, normalMatrix});
@@ -88,6 +88,12 @@ auto ModelAsset::LoadModel(const std::string &filepath) -> std::unique_ptr<Model
         asset->m_Meshes.emplace_back(sourceMesh, sourceMesh->mMaterialIndex);
     }
 
+    return asset;
+}
+
+auto ModelAsset::CreateCubeAsset() -> std::unique_ptr<ModelAsset> {
+    auto asset = std::make_unique<ModelAsset>();
+    asset->m_Meshes.push_back(std::move(*Mesh::Cube()));
     return asset;
 }
 

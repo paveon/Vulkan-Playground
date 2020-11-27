@@ -20,6 +20,7 @@
 #include "Platform/Vulkan/GraphicsContextVk.h"
 #include "Engine/Renderer/RenderPass.h"
 #include "ImGuiLayerVk.h"
+#include "ShaderPipelineVk.h"
 
 
 class WindowResizeEvent;
@@ -46,7 +47,7 @@ public:
 
     auto GetDevice() const -> Device & { return m_Device; }
 
-    auto GetFramebuffer() -> vk::Framebuffer & { return *m_Framebuffers[m_ImageIndex]; }
+//    auto GetFramebuffer() -> vk::Framebuffer & { return *m_Framebuffers[m_ImageIndex]; }
 
     auto FramebufferSize() const -> std::pair<uint32_t, uint32_t> { return m_Context.FramebufferSize(); }
 
@@ -78,6 +79,10 @@ public:
     auto impl_GetRenderPass() const -> const RenderPass & override { return *m_RenderPass; }
 
 private:
+    static constexpr const char *POST_PROCESS_VS_PATH = BASE_DIR "/shaders/postprocess.vert.spv";
+    static constexpr const char *POST_PROCESS_FS_PATH = BASE_DIR "/shaders/postprocess.frag.spv";
+    static const std::vector<std::pair<const char *, ShaderType>> POST_PROCESS_SHADERS;
+
     const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
     GfxContextVk &m_Context;
@@ -87,6 +92,7 @@ private:
     std::unordered_map<size_t, MeshAllocationMetadata> m_MeshAllocations;
     vk::RingStageBuffer m_StageBuffer;
     vk::DeviceBuffer m_MeshDeviceBuffer;
+    vk::DeviceBuffer m_ImageDeviceBuffer;
     vk::UniformBuffer m_UniformBuffer;
 
     vk::CommandPool *m_GfxCmdPool;
@@ -100,19 +106,24 @@ private:
     vk::ImageView *m_ColorImageView;
     vk::ImageView *m_DepthImageView;
 
-    std::vector<vk::Framebuffer *> m_Framebuffers;
+    std::vector<vk::Image> m_ColorImages;
+    std::vector<vk::ImageView> m_ColorViews;
+    std::vector<vk::Framebuffer *> m_OffscreenFBOs;
+    std::vector<vk::Framebuffer *> m_FBOs;
 
     std::vector<vk::Semaphore *> m_AcquireSemaphores;
     std::vector<vk::Semaphore *> m_ReleaseSemaphores;
     std::vector<vk::Fence *> m_Fences;
 
     std::unique_ptr<RenderPass> m_RenderPass;
+    std::unique_ptr<RenderPass> m_RenderPass2;
+    std::unique_ptr<ShaderPipelineVk> m_PostprocessPipeline;
 
     std::array<VkClearValue, 2> m_ClearValues = {};
     VkViewport m_Viewport = {};
     VkRect2D m_Scissor = {};
 
-    size_t m_FrameIndex = 0;
+    uint32_t m_FrameIndex = 0;
     uint32_t m_ImageIndex = 0;
 
     std::vector<VkBufferMemoryBarrier> m_TransferBarriers;

@@ -23,7 +23,6 @@ class ShaderPipelineVk : public ShaderPipeline {
     vk::Pipeline *m_Pipeline = nullptr;
 
     std::vector<VkDescriptorPoolSize> m_PoolSizes;
-    std::vector<VkPushConstantRange> m_Ranges;
 
     VkPipelineInputAssemblyStateCreateInfo m_InputAssembly = {};
     VkPipelineRasterizationStateCreateInfo m_Rasterizer = {};
@@ -47,7 +46,7 @@ class ShaderPipelineVk : public ShaderPipeline {
 
     std::vector<uint32_t> m_BaseDynamicOffsets;
     std::vector<BindingKey> m_UniformSlots;
-//    std::unordered_map<BindingKey, const UniformBufferVk *> m_BoundUBs;
+    std::unordered_map<BindingKey, std::vector<VkImageView>> m_BoundTextures;
     std::unordered_map<BindingKey, UniformBufferVk> m_DefaultUBs;
     std::unordered_map<BindingKey, std::pair<bool, const UniformBufferVk *>> m_ActiveUBs;
 
@@ -55,21 +54,21 @@ class ShaderPipelineVk : public ShaderPipeline {
 
     VkCommandBuffer m_CmdBuffer = nullptr;
     uint32_t m_ImageIndex = 0;
-    uint32_t m_CurrentMaterialID = 0;
+    uint32_t m_SubpassIndex = 0;
 
     /// ShaderPipeline combines descriptor sets from all shader modules
-    std::map<uint32_t, std::map<uint32_t, vk::ShaderModule::DescriptorBinding>> m_DescriptorBindings;
+    std::unordered_map<BindingKey, vk::ShaderModule::DescriptorBinding> m_DescriptorBindings;
+    std::unordered_map<uint32_t, VkPushConstantRange> m_PushRanges;
     std::map<ShaderType, vk::ShaderModule *> m_ShaderModules;
 
     auto createInfo() const -> std::vector<VkPipelineShaderStageCreateInfo>;
 
 public:
-    explicit ShaderPipelineVk(std::string name,
-                              const std::vector<std::pair<const char *, ShaderType>> &shaders,
-                              const std::vector<BindingKey> &perObjectUniforms,
-                              const RenderPass &renderPass,
-                              const std::vector<PushConstant> &pushConstants,
-                              bool enableDepthTest);
+    ShaderPipelineVk(std::string name,
+                     const std::vector<std::pair<const char *, ShaderType>> &shaders,
+                     const std::vector<BindingKey> &perObjectUniforms, const RenderPass &renderPass,
+                     uint32_t subpassIndex, std::pair<VkCullModeFlags, VkFrontFace> culling,
+                     bool enableDepthTest);
 
     auto VertexBindings() const -> const auto & {
         static std::vector<vk::ShaderModule::VertexBinding> emptyBindings;
@@ -87,22 +86,44 @@ public:
 
     void AllocateResources() override;
 
-    void Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t materialID);
+    void Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex, std::optional<uint32_t> materialID);
 
-    auto BindTextures(const std::vector<const Texture2D *> &textures, BindingKey bindingKey) -> std::vector<uint32_t> override;
+    auto BindTextures(const std::vector<const Texture2D *> &textures,
+                      BindingKey bindingKey) -> std::vector<uint32_t> override;
+
+    auto BindTextures(const std::vector<VkImageView> &textures,
+                      BindingKey bindingKey) -> std::vector<uint32_t>;
 
     void BindUniformBuffer(const UniformBuffer *buffer, BindingKey bindingKey) override;
 
-//    void PushConstants(VkCommandBuffer cmdBuffer, uint32_t offset, uint32_t size, const void *data) const override {
-//        vkCmdPushConstants(cmdBuffer, m_PipelineLayout->data(), VK_SHADER_STAGE_VERTEX_BIT, offset, size, data);
-//    }
+    template<typename T>
+    void PushConstants(VkCommandBuffer cmdBuffer, uint32_t index, const T& data) const {
+        auto it = m_PushRanges.find(index);
+        if (it == m_PushRanges.end()) {
+            /// TODO: warning instead?
+            return;
+//            std::ostringstream msg;
+//            msg << "[ShaderPipelineVk::PushConstants] Push constant with index '" << index << "' doesn't exist";
+//            throw std::runtime_error(msg.str().c_str());
+        }
+
+        const auto& range = it->second;
+        if (range.size != sizeof(T)) {
+            std::ostringstream msg;
+            msg << "[ShaderPipelineVk::PushConstants] Push constant(" << index << ") expects " << range.size
+            << " bytes. Got " << sizeof(T) << " bytes instead";
+            throw std::runtime_error(msg.str().c_str());
+        }
+        vkCmdPushConstants(cmdBuffer, m_PipelineLayout->data(), range.stageFlags, range.offset, range.size, &data);
+    }
 
     void SetDynamicOffsets(uint32_t set, const std::vector<uint32_t> &dynamicOffsets) const override;
 
     void SetDynamicOffsets(uint32_t objectIndex,
                            const std::unordered_map<BindingKey, uint32_t> &customOffsets) const;
 
-    void SetUniformData(uint32_t materialID, BindingKey bindingKey, const void *objectData, size_t objectCount) override;
+    void
+    SetUniformData(uint32_t materialID, BindingKey bindingKey, const void *objectData, size_t objectCount) override;
 };
 
 

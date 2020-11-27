@@ -5,7 +5,7 @@
 #include <Engine/Include/Engine.h>
 #include <Platform/Vulkan/GraphicsContextVk.h>
 #include <glm/matrix.hpp>
-//#include <assimp>
+
 
 struct DirectionalLight {
     glm::vec4 direction;
@@ -52,36 +52,27 @@ class TestLayer : public Layer {
     const char *CONTAINER_SPECULAR_TEX_PATH = BASE_DIR "/textures/container_specular.png";
     const char *CONTAINER_EMISSION_TEX_PATH = BASE_DIR "/textures/matrix_emission_map.jpg";
 
-//    const char *vertShaderPath = "shaders/triangle.vert.spv";
-//    const char *fragShaderPath = "shaders/triangle.frag.spv";
+//    const char *vertShaderPath = BASE_DIR "/shaders/triangle.vert.spv";
+//    const char *fragShaderPath = BASE_DIR "/shaders/triangle.frag.spv";
 
-    const char *phongVertShaderPath = "shaders/cube.vert.spv";
-    const char *phongFragShaderPath = "shaders/cube.frag.spv";
+    const char *phongVertShaderPath = BASE_DIR "/shaders/cube.vert.spv";
+    const char *phongFragShaderPath = BASE_DIR "/shaders/cube.frag.spv";
 
-    const char *vertLightShader = "shaders/lightCube.vert.spv";
-    const char *fragLightShader = "shaders/lightCube.frag.spv";
+    const char *vertLightShader = BASE_DIR "/shaders/lightCube.vert.spv";
+    const char *fragLightShader = BASE_DIR "/shaders/lightCube.frag.spv";
 
     GfxContextVk &m_Context;
     Device &m_Device;
 
-//    std::unique_ptr<VertexBuffer> m_VertexBuffer;
-//    std::unique_ptr<IndexBuffer> m_IndexBuffer;
-    std::vector<std::shared_ptr<Texture2D>> m_Textures;
-//    std::vector<std::unique_ptr<UniformBuffer>> m_UniformBuffers;
+    std::vector<Texture2D*> m_Textures;
 
     std::vector<Material *> m_AssetMaterials;
-//    std::vector<std::shared_ptr<Material>> m_Materials;
+    std::vector<std::shared_ptr<Material>> m_Materials;
     std::vector<std::shared_ptr<Mesh>> m_Meshes;
-//    std::vector<Model> m_ChaletModels;
-//    std::vector<Model> m_CubeModels;
-//    std::vector<Model> m_PointLightModels;
 
     std::vector<std::shared_ptr<ShaderPipeline>> m_Shaders;
     std::vector<std::unique_ptr<ModelAsset>> m_ModelAssets;
     std::vector<Entity> m_Entities;
-
-//    std::vector<Model> m_TestModels;
-//    ModelInstance m_TestModelInstance;
 
     std::vector<glm::vec4> m_LightPositions{
             glm::vec4(2.0f, 0.0f, -0.5f, 1.0f),
@@ -141,21 +132,13 @@ public:
                 glm::vec3(0.0f, 3.0f, 0.0f),
                 glm::vec3(0.0f, -1.0f, 0.0f),
                 width / (float) height,
-                0.01f, 200.0f, glm::radians(45.0f));
-
-//        m_UBO.proj = m_Camera->GetProjection();
-//        m_UBO.view = m_Camera->GetView();
-//        m_UBO.model = glm::mat4(1.0f);
-//        m_UBO.mvp = m_Camera->GetProjection() * m_Camera->GetView() * glm::mat4(1.0f);
-
-//        m_RenderPass = RenderPass::Create();
+                0.1f, 20.0f, glm::radians(45.0f));
     }
 
     void OnAttach(const LayerStack *stack) override {
         Layer::OnAttach(stack);
 
         auto[width, height] = Application::GetGraphicsContext().FramebufferSize();
-//        Renderer::SubmitCommand(RenderCommand::SetClearColor({0.64f, 0.84f, 0.91f, 1.0f}));
         Renderer::SubmitCommand(RenderCommand::SetClearColor({0.0f, 0.0f, 0.0f, 1.0f}));
         Renderer::SubmitCommand(RenderCommand::SetViewport(Viewport{
                 0.0f,
@@ -190,7 +173,10 @@ public:
                                                       shaderStages,
                                                       {{0, 0},
                                                        {4, 0}},
-                                                      Renderer::GetRenderPass(), {}, true));
+                                                      Renderer::GetRenderPass(),
+                                                      0,
+                                                      {VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE},
+                                                      true));
 
 //        shaderStages[0] = {vertLightShader, ShaderType::VERTEX_SHADER};
 //        shaderStages[1] = {fragLightShader, ShaderType::FRAGMENT_SHADER};
@@ -206,10 +192,17 @@ public:
         m_Textures[2]->Upload();
         m_Textures[3]->Upload();
 
-//        m_Materials.emplace_back(std::make_shared<Material>("chaletMaterial", m_Shaders[0]));
-
 //        m_Materials.emplace_back(std::make_shared<Material>("cubeMaterial", m_Shaders[0]));
 //        m_Materials.emplace_back(std::make_shared<Material>("lightMaterial", m_Shaders[1]));
+
+        m_Materials.emplace_back(std::make_shared<Material>("Cube Material", m_Shaders[0], BindingKey{4, 0}));
+        auto &cubeMaterial = m_Materials.back();
+        cubeMaterial->BindTextures(
+                {{Texture2D::Type::DIFFUSE,  m_Textures[1]},
+                 {Texture2D::Type::SPECULAR, m_Textures[2]}},
+                BindingKey(1, 0)
+        );
+        m_AssetMaterials.push_back(m_Materials.back().get());
 
 //        m_Materials[0]->AllocateResources(10);
 //        m_Materials[1]->AllocateResources(100);
@@ -229,19 +222,25 @@ public:
             material.BindTextures(backpackAsset->TextureVector(), BindingKey(1, 0));
         }
 
-        m_Entities.emplace_back(m_ModelAssets.back());
         Entity::AllocateTransformsUB(256);
+
+        m_Entities.emplace_back("Backpack", m_ModelAssets.back());
         m_Entities.back().SetScale(glm::vec3(0.5f));
         m_Entities.back().SetRotationX(HALF_PI_F);
         m_Entities.back().SetRotationY(PI_F);
 
-//        m_TestModels.emplace_back(Model(TEST_MODEL_PATH));
-//        m_TestModels.back().StageMeshData();
-//        m_TestModels.back().SetMaterial(m_Materials[1].get(), {3, 0},{1, 0});
-//        m_TestModelInstance = m_TestModels.back().CreateInstance();
-//        m_TestModelInstance.SetPosition(glm::vec3(0.0f));
-//        m_TestModelInstance.SetScale(glm::vec3(0.5f));
-//        m_TestModelInstance.SetRotationX(HALF_PI_F);
+        m_ModelAssets.emplace_back(ModelAsset::CreateCubeAsset());
+        auto &cubeAsset = m_ModelAssets.back();
+        cubeAsset->StageMeshes();
+
+        m_Entities.emplace_back("Cube");
+        auto &cubeObject = m_Entities.back();
+        for (auto &mesh : cubeAsset->Meshes()) {
+            auto &meshInstance = cubeObject.AttachMesh(mesh);
+            meshInstance.SetMaterialInstance(m_Materials[0]->CreateInstance());
+        }
+        cubeObject.SetScale(glm::vec3(0.5f));
+        cubeObject.SetPosition(glm::vec3(1.0f));
 
 //        m_SceneUBO.pointLightCount = m_PointLights.size();
         m_SceneUBO.pointLightCount = 0;
@@ -260,67 +259,10 @@ public:
 //        m_Materials[2]->BindUniformBuffer(*m_SceneUB, 0, 0);
 //        m_Materials[0]->BindUniformBuffer(*m_LightsUB, 4, 0);
 
-
-
 //        m_Materials[0]->SetUniform(2, 0, m_SceneUBO);
 //        m_Materials[1]->SetUniform(0, 0, m_SceneUBO);
 
 
-//        m_Meshes.emplace_back(Mesh::FromOBJ(MODEL_PATH));
-//        m_Meshes.emplace_back(Mesh::Cube());
-
-//        MaterialUBO materialSpec{
-//                glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
-//                glm::vec4(1.0f),
-//                glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
-//                32.0f,
-//                (uint32_t)(indicesMat1[0]),
-//                (uint32_t)(indicesMat1[1]),
-//                (uint32_t)(indicesMat1[2])
-//        };
-
-//        m_ChaletModels.emplace_back();
-//        m_ChaletModels.back().AttachMesh(m_Meshes[0]);
-//        m_ChaletModels.back().SetMaterial(m_Materials[0].get(), std::pair<uint32_t, uint32_t>(),
-//                                          std::pair<uint32_t, uint32_t>());
-//        m_ChaletModels.back().SetScale(glm::vec3(0.5f));
-//        m_ChaletModels.back().SetUniform(1, 0, materialSpec);
-
-//        m_ChaletModels.emplace_back();
-//        m_ChaletModels.back().AttachMesh(m_Meshes[0]);
-//        m_ChaletModels.back().SetMaterial(m_Materials[0].get(), std::pair<uint32_t, uint32_t>(),
-//                                          std::pair<uint32_t, uint32_t>());
-//        m_ChaletModels.back().SetPosition(glm::vec3(1.0f));
-//        m_ChaletModels.back().SetUniform(1, 0, materialSpec);
-
-//        m_CubeModels.emplace_back();
-//        m_CubeModels.back().AttachMesh(m_Meshes[1]);
-//        m_CubeModels.back().SetMaterial(m_Materials[1].get(), std::pair<uint32_t, uint32_t>(),
-//                                        std::pair<uint32_t, uint32_t>());
-//        m_CubeModels.back().SetPosition(glm::vec3(0.0f, 0.0f, -1.0f));
-//        m_CubeModels.back().SetScale(glm::vec3(0.75f));
-//        m_CubeModels.back().SetColor(glm::vec3(1.0f, 0.5f, 0.31f));
-//        m_CubeModels.back().SetUniform(1, 0, materialSpec);
-
-//        glm::mat4 viewModel = m_Camera->GetView() * m_CubeModels.back().GetModelMatrix();
-//        glm::mat4 mvp = m_Camera->GetProjection() * viewModel;
-//        glm::mat4 normalMatrix = m_CubeModels.back().GetNormalMatrix() * m_Camera->GetView();
-//        TransformUBO ubo{
-//                mvp,
-//                viewModel,
-//                normalMatrix,
-//                m_CubeModels.back().GetColor(),
-//                0
-//        };
-//        m_CubeModels.back().SetUniform(2, 0, ubo);
-
-//        for (const auto &chalet : m_ChaletModels) {
-//            ubo.viewModel = m_Camera->GetView() * chalet.GetModelMatrix();
-//            ubo.mvp = m_Camera->GetProjection() * ubo.viewModel;
-//            ubo.normalMatrix = chalet.GetNormalMatrix() * m_Camera->GetView();
-//            ubo.objectColor = glm::vec3(0.0f);
-//            chalet.SetUniform(2, 0, ubo);
-//        }
 
 //        glm::mat4 projectionView(m_Camera->GetProjectionView());
 //        for (const auto &pos : m_LightPositions) {
@@ -333,20 +275,11 @@ public:
 //            light.SetUniform(0, 0, ModelUBO{projectionView * light.GetModelMatrix()});
 //        }
 
-//        for (const auto &material : m_Materials)
-//            material->UpdateUniforms();
-
-//        for (const auto &mesh : m_Meshes)
-//            mesh->StageData();
-
-//        for (const auto& model : m_TestModels) {
-//            model.StageMeshData();
-//        }
-
-        m_Shaders[0]->BindUniformBuffer(Entity::TransformsUB(), BindingKey(0, 0));
         m_Shaders[0]->BindUniformBuffer(Entity::TransformsUB(), BindingKey(0, 0));
         m_AssetMaterials[0]->BindUniformBuffer(m_SceneUB.get(), BindingKey(2, 0));
         m_AssetMaterials[0]->BindUniformBuffer(m_LightsUB.get(), BindingKey(3, 0));
+        m_Materials[0]->BindUniformBuffer(m_SceneUB.get(), BindingKey(2, 0));
+        m_Materials[0]->BindUniformBuffer(m_LightsUB.get(), BindingKey(3, 0));
         Entity::UpdateTransformsUB(*m_Camera);
 
         for (auto &shader : m_Shaders) {
@@ -489,7 +422,17 @@ public:
     }
 
     void OnImGuiDraw() override {
+        static const Entity *selectedEntity = nullptr;
+
+        ImGui::Begin("Docking space");
+        ImGuiID dockspace_id = ImGui::GetID("MyDockspace");
+        ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
+        ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
+        ImGui::End();
+
+
         ImGui::Begin("Scene options");
+
 //        ImGui::SliderFloat3("Point Light", &m_SceneUBO.pointLight.position.x, -10, 10);
         ImGui::SliderFloat3("Light direction", &m_SceneUBO.light.direction.x, -1.0f, 1.0f);
         ImGui::SliderFloat3("Light ambient", &m_SceneUBO.light.ambient.x, 0.0f, 1.0f);
@@ -497,6 +440,35 @@ public:
         ImGui::SliderFloat3("Light specular", &m_SceneUBO.light.specular.x, 0.0f, 1.0f);
         ImGui::SliderFloat("Mouse Sensitivity", &m_MouseSensitivity, 0.01, 0.3);
         ImGui::SliderFloat("Move speed", &m_MoveSpeed, 0.1f, 5.0f);
+
+        if (ImGui::TreeNode("Entities")) {
+            static ImGuiTreeNodeFlags base_flags = ImGuiTreeNodeFlags_OpenOnArrow |
+                                                   ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                                                   ImGuiTreeNodeFlags_SpanAvailWidth;
+
+            const Entity *clickedEntity = nullptr;
+            for (const auto &entity : m_Entities) {
+                ImGuiTreeNodeFlags node_flags = base_flags | ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+                if (&entity == selectedEntity) {
+                    node_flags |= ImGuiTreeNodeFlags_Selected;
+                }
+
+                ImGui::TreeNodeEx(&entity, node_flags, "%s", entity.m_Name.c_str());
+                if (ImGui::IsItemClicked()) {
+                    clickedEntity = &entity;
+                }
+            }
+
+            if (clickedEntity) {
+                if (ImGui::GetIO().KeyCtrl) {
+                    selectedEntity = selectedEntity ? nullptr : clickedEntity;
+                } else {
+                    selectedEntity = clickedEntity;
+                }
+            }
+            ImGui::TreePop();
+        }
+
         ImGui::End();
 
 //        ImGui::ShowDemoWindow();
@@ -512,52 +484,7 @@ public:
             }
         }
 
-
-//        Renderer::SubmitModelInstance(&m_TestModelInstance);
-//        for (const Model &model : m_ChaletModels) {
-//            Renderer::SubmitModel(&model);
-//        }
-//        for (const Model &model : m_CubeModels) {
-//            Renderer::SubmitModel(&model);
-//        }
-//        for (const Model &light : m_PointLightModels) {
-//            Renderer::SubmitModel(&light);
-//        }
-
         Renderer::EndScene();
-
-//        VkCommandBufferBeginInfo beginInfo = {};
-//        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-//        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-//        beginInfo.pInheritanceInfo = &info;
-//
-//        vk::CommandBuffer cmdBuffer(m_CmdBuffers[imageIndex]);
-//        cmdBuffer.Begin(beginInfo);
-//
-//        m_RenderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-//        m_RenderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass->VkHandle();
-//        m_RenderPassBeginInfo.renderArea.offset = {0, 0};
-//        m_RenderPassBeginInfo.clearValueCount = clearValues.size();
-//        m_RenderPassBeginInfo.pClearValues = clearValues.data();
-//        m_RenderPassBeginInfo.renderArea.extent = extent;
-//        m_RenderPassBeginInfo.framebuffer = m_Renderer.GetFramebuffer().data();
-////        vkCmdBeginRenderPass(cmdBuffer.data(), &m_RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-//
-//        vkCmdSetViewport(cmdBuffer.data(), 0, 1, &viewport);
-//        vkCmdSetScissor(cmdBuffer.data(), 0, 1, &scissor);
-//
-//        m_GraphicsPipeline->Bind(cmdBuffer.data(), imageIndex);
-//
-//        m_Mesh->VertexBuffer().Bind(cmdBuffer.data(), 0);
-//        m_Mesh->IndexBuffer().Bind(cmdBuffer.data(), 0);
-//
-//        vkCmdDrawIndexed(cmdBuffer.data(), m_Model->IndexCount(), 1, 0, 0, 0);
-//
-////        vkCmdEndRenderPass(cmdBuffer.data());
-//
-//        cmdBuffer.End();
-//
-//        return cmdBuffer.data();
     }
 };
 

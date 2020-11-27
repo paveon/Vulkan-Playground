@@ -5,9 +5,7 @@
 #include "Renderer.h"
 
 
-Material::Material(std::string name) : m_Name(std::move(name)) {
-
-}
+Material::Material(std::string name) : m_Name(std::move(name)) {}
 
 
 Material::Material(std::string name, std::shared_ptr<ShaderPipeline> shaderPipeline, BindingKey materialSlot) : m_Name(std::move(name)) {
@@ -74,12 +72,6 @@ void Material::BindTextures(const std::vector<std::pair<Texture2D::Type, const T
     for (size_t i = 0; i < textures.size(); i++) {
         metadata[i].samplerIdx = indices[i];
     }
-//        auto textureCount = m_BoundTextures.size();
-//        m_BoundTextures.reserve(textureCount + textures.size());
-//        m_BoundTextures.insert(m_BoundTextures.end(), textures.begin(), textures.end());
-//        m_ShaderPipeline->BindTextures(set, binding, m_BoundTextures);
-//        std::vector<uint32_t> indices(textures.size());
-//        std::iota(indices.begin(), indices.end(), textureCount);
 
     for (size_t i = 0; i < textures.size(); i++) {
         const auto&[texType, texture] = textures[i];
@@ -92,7 +84,7 @@ void Material::BindTextures(const std::vector<std::pair<Texture2D::Type, const T
     }
 }
 
-auto Material::CreateInstance(BindingKey) -> MaterialInstance {
+auto Material::CreateInstance() -> MaterialInstance {
     auto newInstanceID = m_InstanceCount++;
     m_MaterialUBOs.resize(m_InstanceCount);
 

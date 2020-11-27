@@ -8,7 +8,8 @@ auto ShaderPipeline::Create(std::string name,
                             const std::vector<std::pair<const char *, ShaderType>> &shaders,
                             const std::vector<BindingKey> &perObjectUniforms,
                             const RenderPass &renderPass,
-                            const std::vector<PushConstant> &pushConstants,
+                            uint32_t subpassIndex,
+                            std::pair<VkCullModeFlags, VkFrontFace> culling,
                             bool enableDepthTest) -> std::unique_ptr<ShaderPipeline> {
 //    std::vector<uint32_t> dynamics;
 //    std::transform(perObjectUniforms.begin(), perObjectUniforms.end(), std::back_inserter(dynamics),
@@ -20,7 +21,8 @@ auto ShaderPipeline::Create(std::string name,
                                                       shaders,
                                                       perObjectUniforms,
                                                       renderPass,
-                                                      pushConstants,
+                                                      subpassIndex,
+                                                      culling,
                                                       enableDepthTest);
     }
 

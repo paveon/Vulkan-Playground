@@ -89,11 +89,19 @@ public:
 
     Mesh(const aiMesh *sourceMesh, uint32_t assimpMaterialIdx);
 
+    Mesh(const Mesh &other) = delete;
+
+    auto operator=(const Mesh &other) -> Mesh & = delete;
+
+    Mesh(Mesh &&other) noexcept = default;
+
+    auto operator=(Mesh &&other) noexcept -> Mesh & = default;
+
     static auto Create(const aiMesh *sourceMesh, uint32_t assimpMaterialIdx) -> std::unique_ptr<Mesh> {
         return std::make_unique<Mesh>(sourceMesh, assimpMaterialIdx);
     }
 
-    auto GetInstance(uint32_t parentEntityID) -> MeshRenderer {
+    auto CreateInstance(uint32_t parentEntityID) -> MeshRenderer {
         return MeshRenderer(this, m_InstanceCount++, parentEntityID);
     }
 

@@ -62,9 +62,6 @@ void Renderer::EndScene() {
     }
 }
 
-void Renderer::SubmitMesh(const Mesh *mesh) {
-//    s_Renderer->m_Scene.m_Meshes.push_back(mesh);
-}
 
 void Renderer::SubmitMeshRenderer(const MeshRenderer *meshInstance) {
     auto &batches = s_Renderer->m_Scene.m_MaterialBatches;
@@ -74,20 +71,8 @@ void Renderer::SubmitMeshRenderer(const MeshRenderer *meshInstance) {
         it = batches.insert({meshMaterial, {}}).first;
     }
     it->second.push_back(meshInstance);
-//    mesh->m_Material.m_Material
-//    s_Renderer->m_Scene.m_Meshes.push_back(mesh);
 }
 
-void Renderer::SubmitModel(const Model *model) {
-//    s_Renderer->m_Scene.m_Models.push_back(model);
-}
-
-void Renderer::SubmitModelInstance(const ModelInstance *instance) {
-//    const Model* model = instance->GetModel();
-//    s_Renderer->m_Scene.m_ModelSet.insert(model);
-//    s_Renderer->m_Scene.m_MaterialSet.insert(model->GetMaterial());
-//    s_Renderer->m_Scene.m_ModelInstances.push_back(instance);
-}
 
 void Renderer::SubmitCommand(const RenderCommand &cmd) {
     s_Renderer->m_CmdQueue.AddCommand(cmd);

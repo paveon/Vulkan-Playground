@@ -1,8 +1,8 @@
 #include "ImGuiLayerVk.h"
 
 #include <Engine/Application.h>
-#include <examples/imgui_impl_vulkan.h>
-#include <examples/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
+#include <backends/imgui_impl_glfw.h>
 
 #include "RendererVk.h"
 #include "GraphicsContextVk.h"

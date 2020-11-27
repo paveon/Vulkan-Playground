@@ -211,6 +211,7 @@ namespace vk {
                                 default:
                                     throw std::runtime_error("[ShaderModule] Unsupported vector size");
                             }
+                            break;
                         }
                         case 32: {
                             switch (base_type.vecsize) {
@@ -229,6 +230,7 @@ namespace vk {
                                 default:
                                     throw std::runtime_error("[ShaderModule] Unsupported vector size");
                             }
+                            break;
                         }
                     }
                     break;
@@ -252,6 +254,7 @@ namespace vk {
                                 default:
                                     throw std::runtime_error("[ShaderModule] Unsupported vector size");
                             }
+                            break;
                         }
                     }
                     break;
@@ -285,7 +288,8 @@ namespace vk {
 //                totalSize += memberSize;
 //            }
             auto size = glsl.get_declared_struct_size(baseType);
-            m_DescriptorSetLayouts[setIdx][bindingIdx] = DescriptorBinding{
+            uint32_t bindingKey = (setIdx << 16u) + bindingIdx;
+            m_DescriptorSetLayouts[bindingKey] = DescriptorBinding{
                     resource.name,
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
 //                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -295,6 +299,18 @@ namespace vk {
 
             std::cout << "[ShaderModule (" << filename << ")] UBO: "
                       << resource.name << ", Set: " << setIdx << ", Binding: " << bindingIdx << std::endl;
+        }
+
+        /// Extract push constants
+        for (auto& resource : resources.push_constant_buffers) {
+            auto ranges = glsl.get_active_buffer_ranges(resource.id);
+            for (auto &range : ranges) {
+                m_PushRanges[range.index] = {
+                        VK_PIPELINE_STAGE_FLAG_BITS_MAX_ENUM,
+                        (uint32_t)range.offset,
+                        (uint32_t)range.range,
+                };
+            }
         }
 
         /// Extract sampled images
@@ -318,7 +334,8 @@ namespace vk {
             }
             uint32_t setIdx = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
             uint32_t bindingIdx = glsl.get_decoration(resource.id, spv::DecorationBinding);
-            m_DescriptorSetLayouts[setIdx][bindingIdx] = binding;
+            uint32_t bindingKey = (setIdx << 16u) + bindingIdx;
+            m_DescriptorSetLayouts[bindingKey] = binding;
 
             std::cout << "[ShaderModule (" << filename << ")] Sampler: "
                       << resource.name << ", Set: " << setIdx << ", Binding: " << bindingIdx << std::endl;
@@ -422,6 +439,9 @@ namespace vk {
 
     void Image::ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout, VkPipelineStageFlags dstStage,
                              VkImageAspectFlags aspectFlags) {
+        /// TODO: this needs to be rewritten. I misunderstood some key aspects
+        /// about memory synchronization when I started writing this.
+        /// Resource to use: http://themaister.net/blog/2019/08/14/yet-another-blog-explaining-vulkan-synchronization/
         VkImageMemoryBarrier barrier = s_BaseBarrier;
         barrier.oldLayout = m_CurrentLayout;
         barrier.newLayout = newLayout;
@@ -437,7 +457,7 @@ namespace vk {
                 switch (newLayout) {
                     case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
                         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                        m_CurrentStage = VK_PIPELINE_STAGE_HOST_BIT;
+                        m_CurrentStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
                         break;
 
                     case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
@@ -595,7 +615,7 @@ namespace vk {
         createInfo.imageColorSpace = surfaceFormat.colorSpace;
         createInfo.imageExtent = m_Extent;
         createInfo.imageArrayLayers = 1;
-        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         createInfo.preTransform = m_Capabilities.currentTransform;
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         createInfo.presentMode = presentMode;

@@ -1,3 +1,7 @@
 cmake*/*
 cmake*
+bin/*
 .vs
+*.spv
+*.dump
+

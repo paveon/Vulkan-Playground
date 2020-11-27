@@ -106,6 +106,16 @@ vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec
 }
 
 
+const float near = 0.1;
+const float far  = 100.0;
+
+float LinearizeDepth(float depth)
+{
+    float z = depth * 2.0 - 1.0; // back to NDC
+    return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
+
 void main() {
     vec2 flippedTexCoords = vec2(TexCoords.x, 1 - TexCoords.y);
 
@@ -117,11 +127,14 @@ void main() {
     vec3 result = CalcDirLight(sceneUBO.light, norm, eyeDir, diffuseTexel, specularTexel);
     result += CalcSpotLight(sceneUBO.spotLight, norm, FragPos, eyeDir, diffuseTexel, specularTexel);
 
+//    vec4 coords = gl_FragCoord;
+
     for (int i = 0; i < min(MAX_LIGHTS, sceneUBO.pointLightCount); i++) {
         result += CalcPointLight(lightsUBO.pointLights[i], norm, FragPos, eyeDir, diffuseTexel, specularTexel);
     }
-
     outColor = vec4(result, 1.0f);
 
+//    float depth = LinearizeDepth(gl_FragCoord.z) / far;
+//    outColor = vec4(vec3(depth), 1.0);
 //    outColor = vec4(norm, 1.0f);
 }

@@ -14,7 +14,7 @@ private:
     Device& m_Device;
 
 public:
-    RenderPassVk();
+    explicit RenderPassVk(bool test);
 
     ~RenderPassVk() override;
 

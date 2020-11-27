@@ -20,6 +20,7 @@ void ImGuiLayer::ConfigureImGui(const std::pair<uint32_t, uint32_t> &framebuffer
     ImGuiIO &io = ImGui::GetIO();
     io.DisplaySize = ImVec2(framebufferSize.first, framebufferSize.second);
     io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+    io.ConfigDockingWithShift = true;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
 //    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
