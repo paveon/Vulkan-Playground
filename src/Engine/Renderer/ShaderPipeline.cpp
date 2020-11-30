@@ -6,14 +6,11 @@
 
 auto ShaderPipeline::Create(std::string name,
                             const std::vector<std::pair<const char *, ShaderType>> &shaders,
-                            const std::vector<BindingKey> &perObjectUniforms,
+                            const std::unordered_set<BindingKey> &perObjectUniforms,
                             const RenderPass &renderPass,
                             uint32_t subpassIndex,
                             std::pair<VkCullModeFlags, VkFrontFace> culling,
-                            bool enableDepthTest) -> std::unique_ptr<ShaderPipeline> {
-//    std::vector<uint32_t> dynamics;
-//    std::transform(perObjectUniforms.begin(), perObjectUniforms.end(), std::back_inserter(dynamics),
-//                   [](const std::pair<uint32_t, uint32_t> &x) { return (x.first << 16u) + x.second; });
+                            DepthState depthState) -> std::unique_ptr<ShaderPipeline> {
 
     switch (RendererAPI::GetSelectedAPI()) {
         case RendererAPI::API::VULKAN:
@@ -23,7 +20,7 @@ auto ShaderPipeline::Create(std::string name,
                                                       renderPass,
                                                       subpassIndex,
                                                       culling,
-                                                      enableDepthTest);
+                                                      depthState);
     }
 
     return nullptr;

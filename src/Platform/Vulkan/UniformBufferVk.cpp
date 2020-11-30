@@ -52,3 +52,16 @@ void UniformBufferVk::SetData(const void *objectData, size_t objectCount, uint32
 
     vkUnmapMemory(*m_Device, m_Memory);
 }
+
+void UniformBufferVk::SetMemberData(const void *memberData, uint32_t memberBytes, uint32_t memberOffset) const {
+    void *mappedPtr = nullptr;
+    vkMapMemory(*m_Device, m_Memory, m_BaseOffset, m_BufferSize - m_BaseOffset, 0, &mappedPtr);
+
+    for (size_t imageIdx = 0; imageIdx < m_ImageCount; imageIdx++) {
+        uint32_t frameOffset = m_BufferSubSize * imageIdx;
+        auto *dstPtr = (uint8_t *) mappedPtr + frameOffset + memberOffset;
+        std::memcpy(dstPtr, memberData, memberBytes);
+    }
+
+    vkUnmapMemory(*m_Device, m_Memory);
+}

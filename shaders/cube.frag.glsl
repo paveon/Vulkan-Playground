@@ -127,13 +127,12 @@ void main() {
     vec3 result = CalcDirLight(sceneUBO.light, norm, eyeDir, diffuseTexel, specularTexel);
     result += CalcSpotLight(sceneUBO.spotLight, norm, FragPos, eyeDir, diffuseTexel, specularTexel);
 
-//    vec4 coords = gl_FragCoord;
-
     for (int i = 0; i < min(MAX_LIGHTS, sceneUBO.pointLightCount); i++) {
         result += CalcPointLight(lightsUBO.pointLights[i], norm, FragPos, eyeDir, diffuseTexel, specularTexel);
     }
     outColor = vec4(result, 1.0f);
 
+//    outColor = vec4(diffuseTexel.xyz, 1.0f);
 //    float depth = LinearizeDepth(gl_FragCoord.z) / far;
 //    outColor = vec4(vec3(depth), 1.0);
 //    outColor = vec4(norm, 1.0f);

@@ -40,14 +40,21 @@ RendererVk::RendererVk() :
     m_RenderPass = std::make_unique<RenderPassVk>(true);
     m_RenderPass2 = std::make_unique<RenderPassVk>(false);
 
+    DepthState depthState{};
+    depthState.testEnable = VK_FALSE;
+    depthState.writeEnable = VK_FALSE;
+    depthState.boundTestEnable = VK_FALSE;
+    depthState.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    depthState.min = 0.0f;
+    depthState.max = 1.0f;
     m_PostprocessPipeline = std::make_unique<ShaderPipelineVk>(std::string("Post Process Pipeline"),
                                                                POST_PROCESS_SHADERS,
-                                                               std::vector<BindingKey>{},
+                                                               std::unordered_set<BindingKey>{},
                                                                *m_RenderPass2,
                                                                0,
                                                                std::make_pair(VK_CULL_MODE_NONE,
                                                                               VK_FRONT_FACE_COUNTER_CLOCKWISE),
-                                                               false);
+                                                               depthState);
 
 
     m_GfxCmdPool = m_Device.createCommandPool(m_Device.queueIndex(QueueFamily::GRAPHICS),
@@ -62,8 +69,6 @@ RendererVk::RendererVk() :
             m_Device.queueIndex(QueueFamily::TRANSFER),
             m_Device.queueIndex(QueueFamily::GRAPHICS),
     };
-
-    VkExtent2D maxExtent{1920, 1080}; // Temporary hack
 
     m_ColorImages.emplace_back(m_Device, std::set<uint32_t>{m_Device.GfxQueueIdx()},
                                extent, 1,

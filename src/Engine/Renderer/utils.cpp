@@ -259,10 +259,10 @@ void copyBufferToImage(const vk::CommandBuffer &cmdBuffer, const vk::Buffer &buf
     region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     region.imageSubresource.mipLevel = 0;
     region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = 1;
+    region.imageSubresource.layerCount = image.Info().arrayLayers;
 
     region.imageOffset = {0, 0, 0};
-    region.imageExtent = {image.Extent.width, image.Extent.height, 1};
+    region.imageExtent = {image.Extent().width, image.Extent().height, 1};
 
     vkCmdCopyBufferToImage(cmdBuffer.data(), buffer.data(), image.data(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                            &region);

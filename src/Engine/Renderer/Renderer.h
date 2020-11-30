@@ -20,6 +20,7 @@ class Scene {
 public:
     std::vector<const Mesh*> m_Meshes;
     std::unordered_map<const Material*, std::vector<const MeshRenderer*>> m_MaterialBatches;
+    const MeshRenderer* m_SkyboxMesh{};
     std::shared_ptr<PerspectiveCamera> m_Camera;
 
     Scene() = default;
@@ -87,6 +88,8 @@ public:
     static void EndScene();
 
     static void SubmitMeshRenderer(const MeshRenderer* mesh);
+
+    static void SubmitSkybox(const MeshRenderer* mesh);
 
 //    static void StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) {
 //        s_Renderer->impl_StageData(dstBufferHandle, dstOffsetHandle, data, bytes);

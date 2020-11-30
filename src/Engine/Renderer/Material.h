@@ -21,15 +21,15 @@ struct TransformUBO {
 };
 
 
-struct MaterialUBO {
-    glm::vec4 ambient;
-    glm::vec4 diffuse;
-    glm::vec4 specular;
-    float shininess;
-    int32_t diffuseTexIdx;
-    int32_t specularTexIdx;
-    int32_t emissionTexIdx;
-};
+//struct MaterialUBO {
+//    glm::vec4 ambient;
+//    glm::vec4 diffuse;
+//    glm::vec4 specular;
+//    float shininess;
+//    int32_t diffuseTexIdx;
+//    int32_t specularTexIdx;
+//    int32_t emissionTexIdx;
+//};
 
 
 struct TextureKey {
@@ -101,27 +101,32 @@ public:
 class Material {
     friend class MaterialInstance;
 
-    struct BoundTexture {
+    struct BoundTexture2D {
         const Texture2D *texture{};
+        uint32_t samplerIdx = 0;
+    };
+
+    struct BoundCubemap {
+        const TextureCubemap *texture{};
         uint32_t samplerIdx = 0;
     };
 
     struct Uniform {
         std::vector<uint8_t> data;
         uint32_t objectSize;
-        bool dynamic;
+        bool perObject;
     };
 
     std::string m_Name;
 
     std::shared_ptr<ShaderPipeline> m_ShaderPipeline;
     std::vector<uint8_t> m_VertexLayout;
+    std::unordered_map<TextureKey, std::vector<BoundTexture2D>> m_BoundTextures2D;
+    std::unordered_map<BindingKey, std::vector<BoundCubemap>> m_BoundCubemaps;
     std::unordered_map<BindingKey, Uniform> m_UniformData;
+    std::unordered_map<BindingKey, Uniform> m_SharedUniformData;
+//    std::vector<MaterialUBO> m_MaterialUBOs;
 
-    std::unordered_map<TextureKey, std::vector<BoundTexture>> m_BoundTextures;
-    std::vector<MaterialUBO> m_MaterialUBOs;
-
-    BindingKey m_MaterialBinding;
     uint32_t m_MaterialID = 0;
     uint32_t m_InstanceCount = 0;
     //    uint32_t m_ObjectCount = 0;
@@ -138,7 +143,7 @@ class Material {
 public:
     explicit Material(std::string name);
 
-    Material(std::string name, std::shared_ptr<ShaderPipeline> shaderPipeline, BindingKey materialSlot);
+    Material(std::string name, std::shared_ptr<ShaderPipeline> shaderPipeline);
 
     ~Material() {
         if (m_ShaderPipeline) {
@@ -158,7 +163,7 @@ public:
 
     auto GetInstanceCount() const { return m_InstanceCount; }
 
-    void SetShaderPipeline(std::shared_ptr<ShaderPipeline> pipeline, BindingKey materialSlot);
+    void SetShaderPipeline(std::shared_ptr<ShaderPipeline> pipeline);
 
     auto GetPipeline() const -> ShaderPipeline & { return *m_ShaderPipeline; }
 
@@ -168,14 +173,83 @@ public:
         m_ShaderPipeline->BindUniformBuffer(ub, bindingKey);
     }
 
-    void BindTextures(const std::vector<std::pair<Texture2D::Type, const Texture2D *>> &textures,
-                      BindingKey bindingKey);
+    auto BindTextures(const std::vector<std::pair<Texture2D::Type, const Texture2D *>> &textures,
+                                       BindingKey bindingKey) -> std::vector<uint32_t>;
+
+    auto BindCubemap(const TextureCubemap* texture, BindingKey bindingKey) -> uint32_t;
 
     auto VertexLayout() const -> const auto & { return m_VertexLayout; }
 
-    auto MaterialBinding() const  { return m_MaterialBinding; }
-
 //    void AllocateResources(uint32_t objectCount);
+
+    template<typename T>
+    void SetUniform(BindingKey bindingKey, const std::string &memberName, const T &value) {
+        auto uniformIt = m_ShaderPipeline->ShaderUniforms().find(bindingKey);
+        if (uniformIt == m_ShaderPipeline->ShaderUniforms().end()) {
+            std::ostringstream msg;
+            msg << "[Material::SetUniform] Shader '" << m_Name
+                << "' doesn't have uniform binding {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
+            throw std::runtime_error(msg.str().c_str());
+        }
+        const auto &uniform = uniformIt->second;
+        auto memberIt = uniform.members.find(memberName);
+        if (memberIt == uniform.members.end()) {
+            std::ostringstream msg;
+            msg << "[Material::SetUniform] Uniform structure at binding {"
+                << bindingKey.Set() << ";" << bindingKey.Binding() << "}"
+                << "' doesn't have '" << memberName << "' member";
+            throw std::runtime_error(msg.str().c_str());
+        }
+        const auto &member = memberIt->second;
+        if (member.size != sizeof(T)) {
+            std::ostringstream msg;
+            msg << "[Material::SetUniform] Invalid size of input data: " << sizeof(T)
+                << " bytes. Member '" << memberName << "' of uniform structure at binding {"
+                << bindingKey.Set() << ";" << bindingKey.Binding() << "} has size: " << member.size << " bytes";
+            throw std::runtime_error(msg.str().c_str());
+        }
+
+        auto dataIt = m_SharedUniformData.find(bindingKey);
+        if (dataIt == m_SharedUniformData.end()) {
+            std::ostringstream msg;
+            msg << "[(" << m_Name << ")->SetUniform] Uniform {"
+                << bindingKey.Set() << ";" << bindingKey.Binding() << "} doesn't exist";
+            throw std::runtime_error(msg.str().c_str());
+        }
+        auto &uniformData = dataIt->second.data;
+        std::memcpy(&uniformData[member.offset], &value, member.size);
+//        m_ShaderPipeline->SetUniformData(m_MaterialID, bindingKey, &uniformData[member.offset], 1);
+    }
+
+    void SetInstanceUniform(BindingKey bindingKey, size_t instanceID, const void *data) {
+        if (instanceID >= m_InstanceCount) {
+            std::ostringstream msg;
+            msg << "[(" << m_Name << ")->SetObjectUniform] Object index '" << m_InstanceCount << "' is out of bounds";
+            throw std::runtime_error(msg.str().c_str());
+        }
+        auto uniformIt = m_UniformData.find(bindingKey);
+        if (uniformIt == m_UniformData.end()) {
+            std::ostringstream msg;
+            msg << "[(" << m_Name << ")->SetDynamicUniforms] Uniform {"
+                << bindingKey.Set() << ";" << bindingKey.Binding() << "} doesn't exist";
+            throw std::runtime_error(msg.str().c_str());
+        }
+        auto &uniform = uniformIt->second;
+
+//        if (uniform.objectSize != sizeof(T)) {
+//            std::ostringstream msg;
+//            msg << "[(" << m_Name << ")->SetDynamicUniforms] Invalid size of {"
+//                << bindingKey.Set() << ";" << bindingKey.Binding()
+//                << "} uniform data: " << sizeof(T) << " bytes. Expected: " << uniform.objectSize << " bytes";
+//            throw std::runtime_error(msg.str().c_str());
+//        }
+
+        size_t instanceOffset = uniform.objectSize * instanceID;
+//        size_t dataSize = (uniform.objectSize * values.size());
+        std::memcpy(&uniform.data[instanceOffset], data, uniform.objectSize);
+
+//        m_ShaderPipeline->SetUniformData(m_MaterialID, bindingKey, data, 1);
+    }
 
     template<typename T>
     void SetDynamicUniforms(BindingKey bindingKey, size_t firstIndex, const std::vector<T> &values) {
@@ -185,29 +259,7 @@ public:
             throw std::runtime_error(msg.str().c_str());
         }
 
-        auto it = m_UniformData.find(bindingKey);
-        if (it == m_UniformData.end()) {
-            std::ostringstream msg;
-            msg << "[(" << m_Name << ")->SetDynamicUniforms] Uniform {"
-                << bindingKey.Set() << ";" << bindingKey.Binding() << "} doesn't exist";
-            throw std::runtime_error(msg.str().c_str());
-        }
-
-        auto &uniform = it->second;
-        if (uniform.objectSize != sizeof(T)) {
-            std::ostringstream msg;
-            msg << "[(" << m_Name << ")->SetDynamicUniforms] Invalid size of {"
-                << bindingKey.Set() << ";" << bindingKey.Binding()
-                << "} uniform data: " << sizeof(T) << " bytes. Expected: " << uniform.objectSize << " bytes";
-            throw std::runtime_error(msg.str().c_str());
-        }
-
-        size_t offset = sizeof(T) * firstIndex;
-        size_t dataSize = (sizeof(T) * values.size());
-        if (uniform.data.size() < offset + dataSize) {
-            uniform.data.resize(offset + dataSize);
-        }
-        std::memcpy(&uniform.data[offset], values.data(), dataSize);
+        m_ShaderPipeline->SetUniformData(m_MaterialID, bindingKey, values.data(), values.size());
     }
 
 

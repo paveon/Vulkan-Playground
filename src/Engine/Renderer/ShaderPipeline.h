@@ -5,13 +5,15 @@
 #include <vector>
 #include "vulkan_wrappers.h"
 
+#include "UniformBuffer.h"
+
 
 struct BindingKey {
     uint32_t value = 0;
 
     BindingKey() = default;
 
-    BindingKey(uint32_t value) : value(value) {}
+    explicit BindingKey(uint32_t value) : value(value) {}
 
     BindingKey(uint32_t set, uint32_t binding) : value((set << 16ul) + binding) {}
 
@@ -22,6 +24,8 @@ struct BindingKey {
     auto operator()() const -> std::size_t { return value; }
 
     auto operator==(const BindingKey &other) const -> bool { return value == other.value; }
+
+    auto operator<(const BindingKey& other) const -> bool { return value < other.value; }
 };
 
 
@@ -129,6 +133,14 @@ struct PushConstant {
     uint32_t size;
 };
 
+struct DepthState {
+    VkBool32 testEnable;
+    VkBool32 writeEnable;
+    VkBool32 boundTestEnable;
+    VkCompareOp compareOp;
+    float min, max;
+};
+
 
 class RenderPass;
 
@@ -136,23 +148,31 @@ class ShaderPipeline;
 
 class Texture2D;
 
-class UniformBuffer;
+class TextureCubemap;
 
 class Material;
 
 class ShaderPipeline {
 public:
+    struct UniformMember {
+        uint32_t offset;
+        uint32_t size;
+    };
+
     struct Uniform {
         std::string name;
         uint32_t size;
         bool perObject;
+        std::unordered_map<std::string, UniformMember> members;
     };
 
 protected:
     std::string m_Name;
 
     std::vector<uint8_t> m_VertexLayout;
+    std::unordered_map<MaterialKey, uint32_t> m_MaterialBufferOffsets;
     std::unordered_map<BindingKey, Uniform> m_ShaderUniforms;
+    std::unordered_map<BindingKey, std::pair<bool, const UniformBuffer *>> m_ActiveUBs;
 
     std::unordered_map<uint32_t, const Material *> m_BoundMaterials;
     uint32_t m_MaterialCount = 0;
@@ -164,11 +184,11 @@ public:
 
     static auto Create(std::string name,
                        const std::vector<std::pair<const char *, ShaderType>> &shaders,
-                       const std::vector<BindingKey> &perObjectUniforms,
+                       const std::unordered_set<BindingKey> &perObjectUniforms,
                        const RenderPass &renderPass,
                        uint32_t subpassIndex,
                        std::pair<VkCullModeFlags, VkFrontFace> culling,
-                       bool enableDepthTest) -> std::unique_ptr<ShaderPipeline>;
+                       DepthState depthState) -> std::unique_ptr<ShaderPipeline>;
 
     auto OnAttach(const Material *material) -> uint32_t {
         auto it = std::find_if(m_BoundMaterials.begin(), m_BoundMaterials.end(), [material](const auto &kv) {
@@ -200,7 +220,10 @@ public:
 
 //    virtual void Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex) = 0;
 
-    virtual auto BindTextures(const std::vector<const Texture2D *> &textures, BindingKey bindingKey) -> std::vector<uint32_t> = 0;
+    virtual auto BindTextures(const std::vector<const Texture2D *> &textures,
+                              BindingKey bindingKey) -> std::vector<uint32_t> = 0;
+
+    virtual auto BindCubemap(const TextureCubemap* texture, BindingKey bindingKey) -> uint32_t = 0;
 
     virtual void BindUniformBuffer(const UniformBuffer *buffer, BindingKey bindingKey) = 0;
 
@@ -210,7 +233,64 @@ public:
 
 //    virtual void SetDynamicOffsets(uint32_t objectIndex) const = 0;
 
-    virtual void SetUniformData(uint32_t materialID, BindingKey bindingKey, const void *objectData, size_t objectCount) = 0;
+    virtual void
+    SetUniformData(uint32_t materialID, BindingKey bindingKey, const void *objectData, size_t objectCount) = 0;
+
+    template<typename T>
+    void SetUniformData(uint32_t materialID, BindingKey bindingKey, const std::string &memberName, const T &value) {
+        auto matIt = m_BoundMaterials.find(materialID);
+        if (matIt == m_BoundMaterials.end()) {
+            std::ostringstream msg;
+            msg << "[ShaderPipelineVk::SetUniformData] Material with ID '" << materialID
+                << "' is not bound to the '" << m_Name << "' ShaderPipeline";
+            throw std::runtime_error(msg.str().c_str());
+        }
+
+        auto uniformIt = m_ShaderUniforms.find(bindingKey);
+        if (uniformIt == m_ShaderUniforms.end()) {
+            std::ostringstream msg;
+            msg << "[ShaderPipelineVk::SetUniformData] Shader '" << m_Name
+                << "' doesn't have uniform binding {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
+            throw std::runtime_error(msg.str().c_str());
+        }
+
+        auto &uniform = uniformIt->second;
+        auto memberIt = uniform.members.find(memberName);
+        if (memberIt == uniform.members.end()) {
+            std::ostringstream msg;
+            msg << "[ShaderPipelineVk::SetUniformData] Uniform structure at binding {"
+                << bindingKey.Set() << ";" << bindingKey.Binding() << "}"
+                << "' doesn't have '" << memberName << "' member";
+            throw std::runtime_error(msg.str().c_str());
+        }
+        auto& member = memberIt->second;
+        if (member.size != sizeof(T)) {
+            std::ostringstream msg;
+            msg << "[ShaderPipelineVk::SetUniformData] Invalid size of input data: " << sizeof(T)
+            << " bytes. Member '" << memberName << "' of uniform structure at binding {"
+                << bindingKey.Set() << ";" << bindingKey.Binding() << "} has size: " << member.size << " bytes";
+            throw std::runtime_error(msg.str().c_str());
+        }
+
+        MaterialKey materialKey(bindingKey, materialID);
+        auto offsetIt = m_MaterialBufferOffsets.find(materialKey);
+        if (offsetIt == m_MaterialBufferOffsets.end()) {
+            std::ostringstream msg;
+            msg << "[ShaderPipelineVk::SetUniformData] ShaderPipeline '" << m_Name
+                << "' doesn't have uniform buffer binding {" << bindingKey.Set() << "," << bindingKey.Binding() << "}";
+            throw std::runtime_error(msg.str().c_str());
+        }
+
+        /// TODO: do we want to write into user-bound buffers too?
+        auto activeIt = m_ActiveUBs.find(bindingKey);
+        if (activeIt != m_ActiveUBs.end()) {
+            auto&[isDefault, activeUB] = activeIt->second;
+            if (isDefault) {
+                activeUB->SetMemberData(&value, member.size, member.offset);
+//                activeUB->SetData(objectData, objectCount, offsetIt->second + member.offset);
+            }
+        }
+    }
 };
 
 

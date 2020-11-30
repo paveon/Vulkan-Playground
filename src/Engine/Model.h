@@ -16,7 +16,7 @@ class PerspectiveCamera;
 class ModelAsset {
     std::vector<Material> m_Materials;
     std::vector<Mesh> m_Meshes;
-    std::unordered_map<Texture2D::Type, std::vector<const Texture2D *>> m_Textures;
+    std::vector<std::unordered_map<Texture2D::Type, std::vector<const Texture2D *>>> m_Textures;
 
 public:
     static auto LoadModel(const std::string &filepath) -> std::unique_ptr<ModelAsset>;
@@ -37,19 +37,21 @@ public:
 
     void StageMeshes() { for (auto &mesh : m_Meshes) mesh.StageData(); }
 
-    auto Textures() -> std::unordered_map<Texture2D::Type, std::vector<const Texture2D *>> & { return m_Textures; }
+    auto Textures(uint32_t materialIdx) -> std::unordered_map<Texture2D::Type, std::vector<const Texture2D *>> & {
+        return m_Textures[materialIdx];
+    }
 
-    auto Textures(Texture2D::Type type) -> std::vector<const Texture2D *> {
-        auto it = m_Textures.find(type);
-        if (it != m_Textures.end())
+    auto Textures(uint32_t materialIdx, Texture2D::Type type) -> std::vector<const Texture2D *> {
+        auto it = m_Textures[materialIdx].find(type);
+        if (it != m_Textures[materialIdx].end())
             return it->second;
         else
             return {};
     }
 
-    auto TextureVector() -> std::vector<std::pair<Texture2D::Type, const Texture2D *>> {
+    auto TextureVector(uint32_t materialIdx) -> std::vector<std::pair<Texture2D::Type, const Texture2D *>> {
         std::vector<std::pair<Texture2D::Type, const Texture2D *>> textures;
-        for (const auto &it : m_Textures) {
+        for (const auto &it : m_Textures[materialIdx]) {
             auto type = it.first;
             std::transform(it.second.begin(), it.second.end(), std::back_inserter(textures),
                            [type](const Texture2D *tex) {

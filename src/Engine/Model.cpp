@@ -68,10 +68,11 @@ auto ModelAsset::LoadModel(const std::string &filepath) -> std::unique_ptr<Model
     for (size_t materialIdx = 0; materialIdx < scene->mNumMaterials; materialIdx++) {
         aiMaterial *sourceMaterial = scene->mMaterials[materialIdx];
         asset->m_Materials.emplace_back(sourceMaterial->GetName().C_Str());
-
+        asset->m_Textures.emplace_back();
+        auto& materialTextures = asset->m_Textures.back();
         for (const auto &type : textureTypes) {
             auto textureCount = sourceMaterial->GetTextureCount(type.second);
-            auto &textures = asset->m_Textures.emplace(type.first, std::vector<const Texture2D *>()).first->second;
+            auto &textures = materialTextures.emplace(type.first, std::vector<const Texture2D *>()).first->second;
             for (unsigned int i = 0; i < textureCount; i++) {
                 sourceMaterial->GetTexture(type.second, i, &tmp);
                 std::string textureName(tmp.C_Str());

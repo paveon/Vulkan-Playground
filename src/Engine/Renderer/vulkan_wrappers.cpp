@@ -176,6 +176,111 @@ namespace vk {
     }
 
 
+    auto ShaderModule::ParseSpirVType(const spirv_cross::SPIRType &type) -> std::pair<VkFormat, uint32_t> {
+        switch (type.basetype) {
+            case spirv_cross::SPIRType::BaseType::Float: {
+                switch (type.width) {
+                    case 16: {
+                        switch (type.vecsize) {
+                            case 1:
+                                return {VK_FORMAT_R16_SFLOAT, 2 * type.columns};
+                            case 2:
+                                return {VK_FORMAT_R16G16_SFLOAT, 4 * type.columns};
+                            case 3:
+                                return {VK_FORMAT_R16G16B16_SFLOAT, 6 * type.columns};
+                            case 4:
+                                return {VK_FORMAT_R16G16B16A16_SFLOAT, 8 * type.columns};
+                            default:
+                                throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                        }
+                    }
+                    case 32: {
+                        switch (type.vecsize) {
+                            case 1:
+                                return {VK_FORMAT_R32_SFLOAT, 4 * type.columns};
+                            case 2:
+                                return {VK_FORMAT_R32G32_SFLOAT, 8 * type.columns};
+                            case 3:
+                                return {VK_FORMAT_R32G32B32_SFLOAT, 12 * type.columns};
+                            case 4:
+                                return {VK_FORMAT_R32G32B32A32_SFLOAT, 16 * type.columns};
+                            default:
+                                throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                        }
+                    }
+                    default:
+                        throw std::runtime_error("[ShaderModule] Unsupported vector component size");
+                }
+                break;
+            }
+            case spirv_cross::SPIRType::BaseType::Double: {
+                switch (type.width) {
+                    case 64: {
+                        switch (type.vecsize) {
+                            case 1:
+                                return {VK_FORMAT_R64_SFLOAT, 8 * type.columns};
+                            case 2:
+                                return {VK_FORMAT_R64G64_SFLOAT, 16 * type.columns};
+                            case 3:
+                                return {VK_FORMAT_R64G64B64_SFLOAT, 24 * type.columns};
+                            case 4:
+                                return {VK_FORMAT_R64G64B64A64_SFLOAT, 32 * type.columns};
+                            default:
+                                throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                        }
+                    }
+                    default:
+                        throw std::runtime_error("[ShaderModule] Unsupported vector component size");
+                }
+                break;
+            }
+            case spirv_cross::SPIRType::BaseType::Int: {
+                switch (type.width) {
+                    case 32: {
+                        switch (type.vecsize) {
+                            case 1:
+                                return {VK_FORMAT_R32_SINT, 4 * type.columns};
+                            case 2:
+                                return {VK_FORMAT_R32G32_SINT, 8 * type.columns};
+                            case 3:
+                                return {VK_FORMAT_R32G32B32_SINT, 12 * type.columns};
+                            case 4:
+                                return {VK_FORMAT_R32G32B32A32_SINT, 16 * type.columns};
+                            default:
+                                throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                        }
+                    }
+                    default:
+                        throw std::runtime_error("[ShaderModule] Unsupported vector component size");
+                }
+            }
+            case spirv_cross::SPIRType::BaseType::UInt: {
+                switch (type.width) {
+                    case 32: {
+                        switch (type.vecsize) {
+                            case 1:
+                                return {VK_FORMAT_R32_UINT, 4 * type.columns};
+                            case 2:
+                                return {VK_FORMAT_R32G32_UINT, 8 * type.columns};
+                            case 3:
+                                return {VK_FORMAT_R32G32B32_UINT, 12 * type.columns};
+                            case 4:
+                                return {VK_FORMAT_R32G32B32A32_UINT, 16 * type.columns};
+                            default:
+                                throw std::runtime_error("[ShaderModule] Unsupported vector size");
+                        }
+                    }
+                    default:
+                        throw std::runtime_error("[ShaderModule] Unsupported vector component size");
+                }
+            }
+            default:
+                throw std::runtime_error("[ShaderModule] Unsupported shader SPIRV data type!");
+        }
+        return {VK_FORMAT_END_RANGE, 0};
+    }
+
+
     void ShaderModule::ExtractIO(const spirv_cross::CompilerGLSL &compiler,
                                  const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
                                  std::vector<VertexBinding> &output) {
@@ -190,78 +295,8 @@ namespace vk {
             uint32_t location = compiler.get_decoration(resource.id, spv::DecorationLocation);
             if (location >= vertexLayout.size()) vertexLayout.resize(location + 1);
 
-            VertexAttribute attribute{};
-            switch (base_type.basetype) {
-                case spirv_cross::SPIRType::BaseType::Float: {
-                    switch (base_type.width) {
-                        case 16: {
-                            switch (base_type.vecsize) {
-                                case 1:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16_SFLOAT, 2};
-                                    break;
-                                case 2:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16G16_SFLOAT, 4};
-                                    break;
-                                case 3:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16G16B16_SFLOAT, 6};
-                                    break;
-                                case 4:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R16G16B16A16_SFLOAT, 8};
-                                    break;
-                                default:
-                                    throw std::runtime_error("[ShaderModule] Unsupported vector size");
-                            }
-                            break;
-                        }
-                        case 32: {
-                            switch (base_type.vecsize) {
-                                case 1:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32_SFLOAT, 4};
-                                    break;
-                                case 2:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32G32_SFLOAT, 8};
-                                    break;
-                                case 3:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32G32B32_SFLOAT, 12};
-                                    break;
-                                case 4:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R32G32B32A32_SFLOAT, 16};
-                                    break;
-                                default:
-                                    throw std::runtime_error("[ShaderModule] Unsupported vector size");
-                            }
-                            break;
-                        }
-                    }
-                    break;
-                }
-                case spirv_cross::SPIRType::BaseType::Double: {
-                    switch (base_type.width) {
-                        case 64: {
-                            switch (base_type.vecsize) {
-                                case 1:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64_SFLOAT, 8};
-                                    break;
-                                case 2:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64G64_SFLOAT, 16};
-                                    break;
-                                case 3:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64G64B64_SFLOAT, 24};
-                                    break;
-                                case 4:
-                                    attribute = VertexAttribute{resource.name, VK_FORMAT_R64G64B64A64_SFLOAT, 32};
-                                    break;
-                                default:
-                                    throw std::runtime_error("[ShaderModule] Unsupported vector size");
-                            }
-                            break;
-                        }
-                    }
-                    break;
-                }
-                default:
-                    throw std::runtime_error("[ShaderModule] Unsupported shader stage input attribute type!");
-            }
+            auto[vkFormat, size] = ParseSpirVType(base_type);
+            VertexAttribute attribute{resource.name, vkFormat, size};
             vertexLayout[location] = attribute;
             std::cout << "[ShaderModule (" << m_Filepath << ")] Shader input: " << resource.name << std::endl;
         }
@@ -280,42 +315,49 @@ namespace vk {
         for (auto &resource : resources.uniform_buffers) {
             uint32_t setIdx = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
             uint32_t bindingIdx = glsl.get_decoration(resource.id, spv::DecorationBinding);
-            const auto& baseType = glsl.get_type(resource.base_type_id);
-//            size_t memberCount = baseType.member_types.size();
-//            uint32_t totalSize = 0;
-//            for (uint32_t i = 0; i < memberCount; i++) {
-//                auto memberSize = glsl.get_declared_struct_member_size(baseType, i);
-//                totalSize += memberSize;
-//            }
-            auto size = glsl.get_declared_struct_size(baseType);
             uint32_t bindingKey = (setIdx << 16u) + bindingIdx;
-            m_DescriptorSetLayouts[bindingKey] = DescriptorBinding{
+            const auto &baseType = glsl.get_type(resource.base_type_id);
+            uint32_t size = glsl.get_declared_struct_size(baseType);
+
+            std::unordered_map<std::string, UniformMember> members;
+            size_t memberCount = baseType.member_types.size();
+            for (uint32_t i = 0; i < memberCount; i++) {
+                auto memberTypeID = baseType.member_types[i];
+                const auto &memberType = glsl.get_type(memberTypeID);
+//                auto[vkFormat, typeSize] = ParseSpirVType(memberType);
+                const auto &memberName = glsl.get_member_name(resource.base_type_id, i);
+                uint32_t memberSize = glsl.get_declared_struct_member_size(baseType, i);
+                uint32_t offset = glsl.type_struct_member_offset(baseType, i);
+//                assert(memberSize == typeSize);
+                members[memberName] = {offset, memberSize};
+            }
+
+            m_UniformBindings.emplace(bindingKey, UniformBinding{
                     resource.name,
-                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-//                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    (uint32_t)size,
-                    1
-            };
+                    size,
+                    1,
+                    std::move(members)
+            });
 
             std::cout << "[ShaderModule (" << filename << ")] UBO: "
                       << resource.name << ", Set: " << setIdx << ", Binding: " << bindingIdx << std::endl;
         }
 
         /// Extract push constants
-        for (auto& resource : resources.push_constant_buffers) {
+        for (auto &resource : resources.push_constant_buffers) {
             auto ranges = glsl.get_active_buffer_ranges(resource.id);
             for (auto &range : ranges) {
                 m_PushRanges[range.index] = {
                         VK_PIPELINE_STAGE_FLAG_BITS_MAX_ENUM,
-                        (uint32_t)range.offset,
-                        (uint32_t)range.range,
+                        (uint32_t) range.offset,
+                        (uint32_t) range.range,
                 };
             }
         }
 
         /// Extract sampled images
         for (auto &resource : resources.sampled_images) {
-            DescriptorBinding binding{};
+            SamplerBinding binding{};
 
             const auto &type = glsl.get_type(resource.type_id);
             if (type.array.empty()) {
@@ -335,7 +377,7 @@ namespace vk {
             uint32_t setIdx = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
             uint32_t bindingIdx = glsl.get_decoration(resource.id, spv::DecorationBinding);
             uint32_t bindingKey = (setIdx << 16u) + bindingIdx;
-            m_DescriptorSetLayouts[bindingKey] = binding;
+            m_SamplerBindings.emplace(bindingKey, binding);
 
             std::cout << "[ShaderModule (" << filename << ")] Sampler: "
                       << resource.name << ", Set: " << setIdx << ", Binding: " << bindingIdx << std::endl;
@@ -364,10 +406,9 @@ namespace vk {
         barrier.image = m_Image;
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = m_MipLevels;
+        barrier.subresourceRange.levelCount = m_Info.mipLevels;
         barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = 1;
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.layerCount = m_Info.arrayLayers;
 
         VkPipelineStageFlags destinationStage;
         switch (m_CurrentLayout) {
@@ -382,7 +423,7 @@ namespace vk {
 
                     case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
                         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                        if (hasStencilComponent(m_Format))
+                        if (hasStencilComponent(m_Info.format))
                             barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
                         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                                                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -447,9 +488,10 @@ namespace vk {
         barrier.newLayout = newLayout;
         barrier.image = m_Image;
         barrier.subresourceRange.aspectMask = aspectFlags;
-        barrier.subresourceRange.levelCount = m_MipLevels;
         barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.layerCount = 1;
+        barrier.subresourceRange.levelCount = m_Info.mipLevels;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = m_Info.arrayLayers;
 
         switch (m_CurrentLayout) {
             case VK_IMAGE_LAYOUT_UNDEFINED:
@@ -462,7 +504,7 @@ namespace vk {
 
                     case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
                         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                        if (hasStencilComponent(m_Format))
+                        if (hasStencilComponent(m_Info.format))
                             barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
                         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                                                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -511,7 +553,7 @@ namespace vk {
 
     void Image::GenerateMipmaps(VkPhysicalDevice physicalDevice, const CommandBuffer &cmdBuffer) {
         VkFormatProperties formatProperties;
-        vkGetPhysicalDeviceFormatProperties(physicalDevice, m_Format, &formatProperties);
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, m_Info.format, &formatProperties);
         if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
             throw std::runtime_error("texture image format does not support linear blitting!");
         }
@@ -526,62 +568,69 @@ namespace vk {
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier.subresourceRange.baseArrayLayer = 0;
         barrier.subresourceRange.layerCount = 1;
         barrier.subresourceRange.levelCount = 1;
 
-        int32_t mipWidth = Extent.width;
-        int32_t mipHeight = Extent.height;
-        for (uint32_t i = 1; i < m_MipLevels; i++) {
-            barrier.subresourceRange.baseMipLevel = i - 1;
-            barrier.oldLayout = m_CurrentLayout;
-            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        int32_t mipWidth = m_Info.extent.width;
+        int32_t mipHeight = m_Info.extent.height;
+        for (uint32_t layer = 0; layer < m_Info.arrayLayers; layer++) {
+            barrier.subresourceRange.baseArrayLayer = layer;
 
-            vkCmdPipelineBarrier(cmdBuffer.data(), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                                 0, nullptr,
-                                 0, nullptr,
-                                 1, &barrier);
+            for (uint32_t mipLevel = 1; mipLevel < m_Info.mipLevels; mipLevel++) {
+                barrier.subresourceRange.baseMipLevel = mipLevel - 1;
+                barrier.oldLayout = m_CurrentLayout;
+                barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-            VkImageBlit blit = {};
-            blit.srcOffsets[0] = {0, 0, 0};
-            blit.srcOffsets[1] = {mipWidth, mipHeight, 1};
-            blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.srcSubresource.mipLevel = i - 1;
-            blit.srcSubresource.baseArrayLayer = 0;
-            blit.srcSubresource.layerCount = 1;
-            blit.dstOffsets[0] = {0, 0, 0};
-            blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1};
-            blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.dstSubresource.mipLevel = i;
-            blit.dstSubresource.baseArrayLayer = 0;
-            blit.dstSubresource.layerCount = 1;
+                vkCmdPipelineBarrier(cmdBuffer.data(), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     0,
+                                     0, nullptr,
+                                     0, nullptr,
+                                     1, &barrier);
 
-            vkCmdBlitImage(cmdBuffer.data(),
-                           m_Image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1, &blit,
-                           VK_FILTER_LINEAR);
+                VkImageBlit blit = {};
+                blit.srcOffsets[0] = {0, 0, 0};
+                blit.srcOffsets[1] = {mipWidth, mipHeight, 1};
+                blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.srcSubresource.mipLevel = mipLevel - 1;
+                blit.srcSubresource.baseArrayLayer = layer;
+                blit.srcSubresource.layerCount = 1;
+                blit.dstOffsets[0] = {0, 0, 0};
+                blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1};
+                blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.dstSubresource.mipLevel = mipLevel;
+                blit.dstSubresource.baseArrayLayer = layer;
+                blit.dstSubresource.layerCount = 1;
 
-            if (mipWidth > 1) mipWidth /= 2;
-            if (mipHeight > 1) mipHeight /= 2;
+                vkCmdBlitImage(cmdBuffer.data(),
+                               m_Image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               1, &blit,
+                               VK_FILTER_LINEAR);
+
+                if (mipWidth > 1) mipWidth /= 2;
+                if (mipHeight > 1) mipHeight /= 2;
+            }
         }
 
+        barrier.subresourceRange.baseArrayLayer = 0;
         barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = m_MipLevels - 1;
+        barrier.subresourceRange.layerCount = m_Info.arrayLayers;
+        barrier.subresourceRange.levelCount = m_Info.mipLevels - 1;
         barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
         std::array<VkImageMemoryBarrier, 2> barriers = {barrier, barrier};
-        barriers[1].subresourceRange.baseMipLevel = m_MipLevels - 1;
+        barriers[1].subresourceRange.baseMipLevel = m_Info.mipLevels - 1;
         barriers[1].subresourceRange.levelCount = 1;
         barriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         vkCmdPipelineBarrier(cmdBuffer.data(),
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
                              0, nullptr,
                              0, nullptr,
                              barriers.size(), barriers.data());
@@ -717,5 +766,30 @@ namespace vk {
         }
 
         Allocate(findMemoryType(physDevice, resultTypeBits, flags), totalSize);
+    }
+
+    DescriptorSetLayout::DescriptorSetLayout(VkDevice device,
+                                             const std::vector<VkDescriptorSetLayoutBinding> &bindings)
+                                             : m_Device(device) {
+
+        std::vector<VkDescriptorBindingFlagsEXT> bindingFlags(bindings.size());
+        for (size_t i = 0; i < bindings.size(); i++) {
+            if (bindings[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+                bindingFlags[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT;
+            }
+        }
+        VkDescriptorSetLayoutBindingFlagsCreateInfoEXT ext{};
+        ext.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
+        ext.bindingCount = bindingFlags.size();
+        ext.pBindingFlags = bindingFlags.data();
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = bindings.size();
+        layoutInfo.pBindings = bindings.data();
+        layoutInfo.pNext = &ext;
+
+        if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
+            throw std::runtime_error("failed to create descriptor set layout!");
     }
 }

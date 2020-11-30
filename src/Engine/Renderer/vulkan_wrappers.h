@@ -510,11 +510,11 @@ namespace vk {
 
         VkImage m_Image = nullptr;
         VkDevice m_Device = nullptr;
-        VkFormat m_Format = VK_FORMAT_UNDEFINED;
+        VkImageCreateInfo m_Info{};
+        VkMemoryRequirements m_MemoryInfo{};
+
         VkImageLayout m_CurrentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkPipelineStageFlags m_CurrentStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        uint32_t m_MipLevels = 1;
-        VkMemoryRequirements m_MemoryInfo{};
 
         static constexpr VkImageMemoryBarrier s_BaseBarrier = {
                 VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -538,11 +538,9 @@ namespace vk {
         void Move(Image &other) noexcept {
             m_Image = other.m_Image;
             m_Device = other.m_Device;
-            m_Format = other.m_Format;
             m_CurrentLayout = other.m_CurrentLayout;
             m_CurrentStage = other.m_CurrentStage;
-            m_MipLevels = other.m_MipLevels;
-            Extent = other.Extent;
+            m_Info = other.m_Info;
             m_MemoryInfo = other.m_MemoryInfo;
             other.m_Image = nullptr;
             other.m_Device = nullptr;
@@ -551,10 +549,7 @@ namespace vk {
         void Release() noexcept { if (m_Image) vkDestroyImage(m_Device, m_Image, nullptr); }
 
         void CreateImage(const VkImageCreateInfo &createInfo) {
-            m_Format = createInfo.format;
-            m_MipLevels = createInfo.mipLevels;
-            Extent.width = createInfo.extent.width;
-            Extent.height = createInfo.extent.height;
+            m_Info = createInfo;
 
             if (vkCreateImage(m_Device, &createInfo, nullptr, &m_Image) != VK_SUCCESS)
                 throw std::runtime_error("failed to create image!");
@@ -563,8 +558,6 @@ namespace vk {
         }
 
     public:
-        VkExtent2D Extent = {};
-
         ~Image() { Release(); }
 
         Image() = default;
@@ -575,10 +568,7 @@ namespace vk {
               VkSampleCountFlagBits samples,
               VkFormat format,
               VkImageTiling tiling,
-              VkImageUsageFlags usage) :
-                m_Device(device), m_Format(format),
-                m_MipLevels(mipLevels),
-                Extent(extent) {
+              VkImageUsageFlags usage) : m_Device(device) {
 
             VkImageCreateInfo imageInfo = {};
             imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -586,9 +576,9 @@ namespace vk {
             imageInfo.extent.width = extent.width;
             imageInfo.extent.height = extent.height;
             imageInfo.extent.depth = 1;
-            imageInfo.mipLevels = m_MipLevels;
+            imageInfo.mipLevels = mipLevels;
             imageInfo.arrayLayers = 1;
-            imageInfo.format = m_Format;
+            imageInfo.format = format;
             imageInfo.tiling = tiling;
             imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             imageInfo.usage = usage;
@@ -632,7 +622,7 @@ namespace vk {
 //            return ImageView(m_Device, m_Image, format, m_MipLevels, aspectFlags);
 //        }
 
-        auto MipLevels() const -> uint32_t { return m_MipLevels; }
+        auto MipLevels() const -> uint32_t { return m_Info.mipLevels; }
 
         void ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout);
 
@@ -643,6 +633,10 @@ namespace vk {
 
         auto MemoryInfo() const -> const VkMemoryRequirements & { return m_MemoryInfo; }
 
+        auto Info() const -> const auto& { return m_Info; }
+
+        auto Extent() const -> const VkExtent3D& { return m_Info.extent; }
+
         void BindMemory(VkDeviceMemory memory, VkDeviceSize offset) {
             if (vkBindImageMemory(m_Device, m_Image, memory, offset) != VK_SUCCESS)
                 throw std::runtime_error("failed to bind memory to image!");
@@ -652,10 +646,15 @@ namespace vk {
 
     inline ImageView::ImageView(VkDevice device, const Image &image, VkImageAspectFlags aspectFlags) : m_Device(
             device) {
+        VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
+        if (image.m_Info.arrayLayers == 6) {
+            viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+        }
+
         VkImageViewCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        createInfo.format = image.m_Format;
+        createInfo.viewType = viewType;
+        createInfo.format = image.Info().format;
         createInfo.image = image.data();
         createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
         createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -663,9 +662,9 @@ namespace vk {
         createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
         createInfo.subresourceRange.aspectMask = aspectFlags;
         createInfo.subresourceRange.baseMipLevel = 0;
-        createInfo.subresourceRange.levelCount = image.m_MipLevels;
+        createInfo.subresourceRange.levelCount = image.Info().mipLevels;
         createInfo.subresourceRange.baseArrayLayer = 0;
-        createInfo.subresourceRange.layerCount = 1;
+        createInfo.subresourceRange.layerCount = image.Info().arrayLayers;
 
         if (vkCreateImageView(m_Device, &createInfo, nullptr, &m_ImageView) != VK_SUCCESS)
             throw std::runtime_error("failed to create image views!");
@@ -972,25 +971,7 @@ namespace vk {
 
         DescriptorSetLayout() = default;
 
-        DescriptorSetLayout(VkDevice device, const std::vector<VkDescriptorSetLayoutBinding> &bindings) : m_Device(
-                device) {
-            VkDescriptorSetLayoutBindingFlagsCreateInfoEXT ext{};
-            VkDescriptorBindingFlagsEXT bindingFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT;
-//            VkDescriptorBindingFlagsEXT bindingFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
-//                                                       VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
-            ext.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
-            ext.bindingCount = bindings.size();
-            ext.pBindingFlags = &bindingFlags;
-
-            VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            layoutInfo.bindingCount = bindings.size();
-            layoutInfo.pBindings = bindings.data();
-            layoutInfo.pNext = &ext;
-
-            if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
-                throw std::runtime_error("failed to create descriptor set layout!");
-        }
+        DescriptorSetLayout(VkDevice device, const std::vector<VkDescriptorSetLayoutBinding> &bindings);
 
         DescriptorSetLayout(const DescriptorSetLayout &other) = delete;
 
@@ -1220,6 +1201,12 @@ namespace vk {
 
     class ShaderModule {
     public:
+        struct UniformMember{
+//            VkFormat format;
+            uint32_t offset;
+            uint32_t size;
+        };
+
         struct VertexAttribute {
             std::string name;
             VkFormat format;
@@ -1240,15 +1227,21 @@ namespace vk {
             VkVertexInputRate inputRate;
         };
 
-        struct DescriptorBinding {
+        struct UniformBinding {
             std::string name;
-            VkDescriptorType type;
             uint32_t size;
+            uint32_t count;
+            std::unordered_map<std::string, UniformMember> structMembers;
+        };
+
+        struct SamplerBinding {
+            VkDescriptorType type;
             uint32_t count;
         };
 
     private:
-        std::unordered_map<uint32_t, DescriptorBinding> m_DescriptorSetLayouts;
+        std::unordered_map<uint32_t, UniformBinding> m_UniformBindings;
+        std::unordered_map<uint32_t, SamplerBinding> m_SamplerBindings;
         std::unordered_map<uint32_t, VkPushConstantRange> m_PushRanges;
         std::vector<VertexBinding> m_VertexInputBindings;
         std::vector<VertexBinding> m_VertexOutputBindings;
@@ -1266,6 +1259,8 @@ namespace vk {
         }
 
         void Release() noexcept { if (m_Module) vkDestroyShaderModule(m_Device, m_Module, nullptr); }
+
+        static auto ParseSpirVType(const spirv_cross::SPIRType& type) -> std::pair<VkFormat, uint32_t>;
 
         void ExtractIO(const spirv_cross::CompilerGLSL &compiler,
                        const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
@@ -1291,9 +1286,11 @@ namespace vk {
             return *this;
         };
 
-        auto GetPushRanges() const -> const auto& { return m_PushRanges; }
+        auto GetPushRanges() const -> const auto & { return m_PushRanges; }
 
-        auto GetSetLayouts() const -> const auto & { return m_DescriptorSetLayouts; }
+        auto GetUniformBindings() const -> const auto & { return m_UniformBindings; }
+
+        auto GetSamplerBindings() const -> const auto & { return m_SamplerBindings; }
 
         auto GetInputBindings() const -> const auto & { return m_VertexInputBindings; }
 

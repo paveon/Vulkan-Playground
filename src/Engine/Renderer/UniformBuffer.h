@@ -13,6 +13,8 @@ protected:
     explicit UniformBuffer(std::string name) : m_Name(std::move(name)) {}
 
 public:
+    static auto Create(std::string name, size_t objectSize, size_t objectCount) -> std::unique_ptr<UniformBuffer>;
+
     virtual ~UniformBuffer() = default;
 
     auto ObjectSize() const -> auto { return m_ObjectSize; }
@@ -25,7 +27,7 @@ public:
 
     virtual void SetData(const void *objectData, size_t objectCount, uint32_t offset) const = 0;
 
-    static auto Create(std::string name, size_t objectSize, size_t objectCount) -> std::unique_ptr<UniformBuffer>;
+    virtual void SetMemberData(const void *memberData, uint32_t memberBytes, uint32_t memberOffset) const = 0;
 };
 
 

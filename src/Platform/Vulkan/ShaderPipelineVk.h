@@ -45,19 +45,15 @@ class ShaderPipelineVk : public ShaderPipeline {
     std::vector<VkPipelineShaderStageCreateInfo> m_ShaderStagesCreateInfo;
 
     std::vector<uint32_t> m_BaseDynamicOffsets;
-    std::vector<BindingKey> m_UniformSlots;
+    std::set<BindingKey, std::less<>> m_UniformBindings;
     std::unordered_map<BindingKey, std::vector<VkImageView>> m_BoundTextures;
     std::unordered_map<BindingKey, UniformBufferVk> m_DefaultUBs;
-    std::unordered_map<BindingKey, std::pair<bool, const UniformBufferVk *>> m_ActiveUBs;
-
-    std::unordered_map<MaterialKey, uint32_t> m_MaterialBufferOffsets;
 
     VkCommandBuffer m_CmdBuffer = nullptr;
     uint32_t m_ImageIndex = 0;
     uint32_t m_SubpassIndex = 0;
 
     /// ShaderPipeline combines descriptor sets from all shader modules
-    std::unordered_map<BindingKey, vk::ShaderModule::DescriptorBinding> m_DescriptorBindings;
     std::unordered_map<uint32_t, VkPushConstantRange> m_PushRanges;
     std::map<ShaderType, vk::ShaderModule *> m_ShaderModules;
 
@@ -66,9 +62,9 @@ class ShaderPipelineVk : public ShaderPipeline {
 public:
     ShaderPipelineVk(std::string name,
                      const std::vector<std::pair<const char *, ShaderType>> &shaders,
-                     const std::vector<BindingKey> &perObjectUniforms, const RenderPass &renderPass,
+                     const std::unordered_set<BindingKey> &perObjectUniforms, const RenderPass &renderPass,
                      uint32_t subpassIndex, std::pair<VkCullModeFlags, VkFrontFace> culling,
-                     bool enableDepthTest);
+                     DepthState depthState);
 
     auto VertexBindings() const -> const auto & {
         static std::vector<vk::ShaderModule::VertexBinding> emptyBindings;
@@ -80,7 +76,7 @@ public:
         }
     }
 
-    auto DescriptorBindings() const -> const auto & { return m_DescriptorBindings; }
+//    auto DescriptorBindings() const -> const auto & { return m_DescriptorBindings; }
 
     void Recreate(const RenderPass &renderPass) override;
 
@@ -93,6 +89,8 @@ public:
 
     auto BindTextures(const std::vector<VkImageView> &textures,
                       BindingKey bindingKey) -> std::vector<uint32_t>;
+
+    auto BindCubemap(const TextureCubemap* texture, BindingKey bindingKey) -> uint32_t override;
 
     void BindUniformBuffer(const UniformBuffer *buffer, BindingKey bindingKey) override;
 
@@ -122,8 +120,9 @@ public:
     void SetDynamicOffsets(uint32_t objectIndex,
                            const std::unordered_map<BindingKey, uint32_t> &customOffsets) const;
 
-    void
-    SetUniformData(uint32_t materialID, BindingKey bindingKey, const void *objectData, size_t objectCount) override;
+    void SetUniformData(uint32_t materialID,
+                        BindingKey bindingKey,
+                        const void *objectData, size_t objectCount) override;
 };
 
 

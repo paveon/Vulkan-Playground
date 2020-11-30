@@ -29,6 +29,8 @@ public:
     auto IsDynamic() const -> bool { return m_PerObject; }
 
     void SetData(const void *objectData, size_t objectCount, uint32_t offset) const override;
+
+    void SetMemberData(const void *memberData, uint32_t memberBytes, uint32_t memberOffset) const override;
 };
 
 

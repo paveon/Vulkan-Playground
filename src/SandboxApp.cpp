@@ -52,11 +52,24 @@ class TestLayer : public Layer {
     const char *CONTAINER_SPECULAR_TEX_PATH = BASE_DIR "/textures/container_specular.png";
     const char *CONTAINER_EMISSION_TEX_PATH = BASE_DIR "/textures/matrix_emission_map.jpg";
 
+    const std::array<const char*, 6> SKYBOX_TEXTURE_PATHS = {
+            BASE_DIR "/textures/skybox/right.jpg",
+            BASE_DIR "/textures/skybox/left.jpg",
+            BASE_DIR "/textures/skybox/top.jpg",
+            BASE_DIR "/textures/skybox/bottom.jpg",
+            BASE_DIR "/textures/skybox/front.jpg",
+            BASE_DIR "/textures/skybox/back.jpg"
+    };
+//    const char *CONTAINER_EMISSION_TEX_PATH = BASE_DIR "/textures/matrix_emission_map.jpg";
+
 //    const char *vertShaderPath = BASE_DIR "/shaders/triangle.vert.spv";
 //    const char *fragShaderPath = BASE_DIR "/shaders/triangle.frag.spv";
 
     const char *phongVertShaderPath = BASE_DIR "/shaders/cube.vert.spv";
     const char *phongFragShaderPath = BASE_DIR "/shaders/cube.frag.spv";
+
+    const char *skyboxVertShaderPath = BASE_DIR "/shaders/skybox.vert.spv";
+    const char *skyboxFragShaderPath = BASE_DIR "/shaders/skybox.frag.spv";
 
     const char *vertLightShader = BASE_DIR "/shaders/lightCube.vert.spv";
     const char *fragLightShader = BASE_DIR "/shaders/lightCube.frag.spv";
@@ -65,14 +78,18 @@ class TestLayer : public Layer {
     Device &m_Device;
 
     std::vector<Texture2D*> m_Textures;
+    TextureCubemap* m_SkyboxTexture;
 
-    std::vector<Material *> m_AssetMaterials;
+    std::vector<Material *> m_UsedMaterials;
     std::vector<std::shared_ptr<Material>> m_Materials;
     std::vector<std::shared_ptr<Mesh>> m_Meshes;
 
     std::vector<std::shared_ptr<ShaderPipeline>> m_Shaders;
     std::vector<std::unique_ptr<ModelAsset>> m_ModelAssets;
     std::vector<Entity> m_Entities;
+//    std::unique_ptr<MeshRenderer> m_SkyboxMesh;
+    MeshRenderer m_SkyboxMesh;
+
 
     std::vector<glm::vec4> m_LightPositions{
             glm::vec4(2.0f, 0.0f, -0.5f, 1.0f),
@@ -88,7 +105,7 @@ class TestLayer : public Layer {
             glm::vec4(0.0f),
             DirectionalLight{
                     glm::vec4(0.0f, 0.0f, -1.0f, 0.0f),
-                    glm::vec4(0.2f, 0.2f, 0.2f, 0.0f),
+                    glm::vec4(0.4f, 0.4f, 0.4f, 0.0f),
                     glm::vec4(0.75f, 0.75f, 0.75f, 0.0f),
                     glm::vec4(1.0f, 1.0f, 1.0f, 0.0f)
             },
@@ -169,6 +186,13 @@ public:
                 {phongFragShaderPath, ShaderType::FRAGMENT_SHADER}
         };
 
+        DepthState depthState{};
+        depthState.testEnable = VK_TRUE;
+        depthState.writeEnable = VK_TRUE;
+        depthState.boundTestEnable = VK_FALSE;
+        depthState.compareOp = VK_COMPARE_OP_LESS;
+        depthState.min = 0.0f;
+        depthState.max = 1.0f;
         m_Shaders.emplace_back(ShaderPipeline::Create("PhongShader",
                                                       shaderStages,
                                                       {{0, 0},
@@ -176,33 +200,49 @@ public:
                                                       Renderer::GetRenderPass(),
                                                       0,
                                                       {VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE},
-                                                      true));
+                                                      depthState));
 
-//        shaderStages[0] = {vertLightShader, ShaderType::VERTEX_SHADER};
-//        shaderStages[1] = {fragLightShader, ShaderType::FRAGMENT_SHADER};
-//        m_Shaders.emplace_back(ShaderPipeline::Create("Light Shader", shaderStages, {{0, 0}},
-//                                                      Renderer::GetRenderPass(), {}, true));
+        depthState.testEnable = VK_FALSE;
+        depthState.writeEnable = VK_FALSE;
+        depthState.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+        shaderStages[0] = {skyboxVertShaderPath, ShaderType::VERTEX_SHADER};
+        shaderStages[1] = {skyboxFragShaderPath, ShaderType::FRAGMENT_SHADER};
+        m_Shaders.emplace_back(ShaderPipeline::Create("SkyboxShader",
+                                                      shaderStages,
+                                                      {},
+                                                      Renderer::GetRenderPass(),
+                                                      0,
+                                                      {VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE},
+                                                      depthState));
+
+        m_SkyboxTexture = TextureCubemap::Create(SKYBOX_TEXTURE_PATHS);
 
         m_Textures.emplace_back(Texture2D::Create(CHALET_TEXTURE_PATH));
         m_Textures.emplace_back(Texture2D::Create(CONTAINER_DIFFUSE_TEX_PATH));
         m_Textures.emplace_back(Texture2D::Create(CONTAINER_SPECULAR_TEX_PATH));
         m_Textures.emplace_back(Texture2D::Create(CONTAINER_EMISSION_TEX_PATH));
-        m_Textures[0]->Upload();
-        m_Textures[1]->Upload();
-        m_Textures[2]->Upload();
-        m_Textures[3]->Upload();
 
 //        m_Materials.emplace_back(std::make_shared<Material>("cubeMaterial", m_Shaders[0]));
 //        m_Materials.emplace_back(std::make_shared<Material>("lightMaterial", m_Shaders[1]));
 
-        m_Materials.emplace_back(std::make_shared<Material>("Cube Material", m_Shaders[0], BindingKey{4, 0}));
+        m_Materials.emplace_back(std::make_shared<Material>("Cube Material", m_Shaders[0]));
         auto &cubeMaterial = m_Materials.back();
-        cubeMaterial->BindTextures(
+        auto texIndices = cubeMaterial->BindTextures(
                 {{Texture2D::Type::DIFFUSE,  m_Textures[1]},
                  {Texture2D::Type::SPECULAR, m_Textures[2]}},
                 BindingKey(1, 0)
         );
-        m_AssetMaterials.push_back(m_Materials.back().get());
+        m_Materials.back()->SetUniform(BindingKey{4, 0}, "diffuseTexIdx", texIndices[0]);
+        m_Materials.back()->SetUniform(BindingKey{4, 0}, "specularTexIdx", texIndices[1]);
+        m_Materials.back()->SetUniform(BindingKey{4, 0}, "shininess", 32.0f);
+        m_UsedMaterials.push_back(m_Materials.back().get());
+
+
+        m_Materials.emplace_back(std::make_shared<Material>("Skybox Material", m_Shaders[1]));
+        auto &skyboxMaterial = m_Materials.back();
+        uint32_t skyboxTexIdx = skyboxMaterial->BindCubemap(m_SkyboxTexture, BindingKey(1, 0));
+        skyboxMaterial->SetUniform(BindingKey{1, 1}, "skyboxTexIdx", skyboxTexIdx);
+        m_UsedMaterials.push_back(m_Materials.back().get());
 
 //        m_Materials[0]->AllocateResources(10);
 //        m_Materials[1]->AllocateResources(100);
@@ -216,10 +256,22 @@ public:
         auto &backpackAsset = m_ModelAssets.back();
         auto &backpackMaterials = backpackAsset->GetMaterials();
         backpackAsset->StageMeshes();
-        for (auto &material : backpackMaterials) {
-            m_AssetMaterials.push_back(&material);
-            material.SetShaderPipeline(m_Shaders[0], BindingKey(4, 0));
-            material.BindTextures(backpackAsset->TextureVector(), BindingKey(1, 0));
+        for (size_t i = 0; i < backpackMaterials.size(); i++) {
+            m_UsedMaterials.push_back(&backpackMaterials[i]);
+            backpackMaterials[i].SetShaderPipeline(m_Shaders[0]);
+            backpackMaterials[i].SetUniform(BindingKey(4, 0), "shininess", 32.0f);
+            auto textures = backpackAsset->TextureVector(i);
+            texIndices = backpackMaterials[i].BindTextures(textures, BindingKey(1, 0));
+            for (size_t texIdx = 0; texIdx < textures.size(); texIdx++) {
+                switch (textures[texIdx].first) {
+                    case Texture2D::Type::SPECULAR:
+                        backpackMaterials[i].SetUniform(BindingKey(4, 0), "specularTexIdx", texIndices[texIdx]);
+                        break;
+                    case Texture2D::Type::DIFFUSE:
+                        backpackMaterials[i].SetUniform(BindingKey(4, 0), "diffuseTexIdx", texIndices[texIdx]);
+                        break;
+                }
+            }
         }
 
         Entity::AllocateTransformsUB(256);
@@ -233,6 +285,7 @@ public:
         auto &cubeAsset = m_ModelAssets.back();
         cubeAsset->StageMeshes();
 
+
         m_Entities.emplace_back("Cube");
         auto &cubeObject = m_Entities.back();
         for (auto &mesh : cubeAsset->Meshes()) {
@@ -241,6 +294,14 @@ public:
         }
         cubeObject.SetScale(glm::vec3(0.5f));
         cubeObject.SetPosition(glm::vec3(1.0f));
+
+//        m_Entities.emplace_back("Skybox Cube");
+//        m_Entities.emplace(m_Entities.begin(), "Skybox Cube");
+//        auto &skyboxObject = m_Entities.front();
+        for (auto &mesh : cubeAsset->Meshes()) {
+            m_SkyboxMesh = mesh.CreateInstance(0);
+            m_SkyboxMesh.SetMaterialInstance(m_UsedMaterials[1]->CreateInstance());
+        }
 
 //        m_SceneUBO.pointLightCount = m_PointLights.size();
         m_SceneUBO.pointLightCount = 0;
@@ -276,10 +337,11 @@ public:
 //        }
 
         m_Shaders[0]->BindUniformBuffer(Entity::TransformsUB(), BindingKey(0, 0));
-        m_AssetMaterials[0]->BindUniformBuffer(m_SceneUB.get(), BindingKey(2, 0));
-        m_AssetMaterials[0]->BindUniformBuffer(m_LightsUB.get(), BindingKey(3, 0));
-        m_Materials[0]->BindUniformBuffer(m_SceneUB.get(), BindingKey(2, 0));
-        m_Materials[0]->BindUniformBuffer(m_LightsUB.get(), BindingKey(3, 0));
+//        m_Shaders[1]->BindUniformBuffer(Entity::TransformsUB(), BindingKey(0, 0));
+        m_UsedMaterials[0]->BindUniformBuffer(m_SceneUB.get(), BindingKey(2, 0));
+        m_UsedMaterials[0]->BindUniformBuffer(m_LightsUB.get(), BindingKey(3, 0));
+        m_UsedMaterials[2]->BindUniformBuffer(m_SceneUB.get(), BindingKey(2, 0));
+        m_UsedMaterials[2]->BindUniformBuffer(m_LightsUB.get(), BindingKey(3, 0));
         Entity::UpdateTransformsUB(*m_Camera);
 
         for (auto &shader : m_Shaders) {
@@ -416,8 +478,17 @@ public:
 //            lightModel.SetUniform(0, 0, ModelUBO{m_Camera->GetProjectionView() * lightModel.GetModelMatrix()});
 //        }
 
+//        m_Entities.back().SetRotationX(HALF_PI_F);
+//        m_Entities.back().SetRotationY(PI_F);
+        auto rotX = glm::rotate(glm::mat4(1.0f), HALF_PI_F, glm::vec3(1.0f, 0.0f, 0.0f));
+        auto rotXY = glm::rotate(rotX, PI_F, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 skyboxView = glm::mat3(m_Camera->GetView());
+        TransformUBO skyboxTransform{};
+        skyboxTransform.mvp = m_Camera->GetProjection() * skyboxView * rotXY;
+        m_UsedMaterials[1]->SetUniform(BindingKey(0,0), "mvp", skyboxTransform.mvp);
+
         Entity::UpdateTransformsUB(*m_Camera);
-        for (auto *material : m_AssetMaterials)
+        for (auto *material : m_UsedMaterials)
             material->UpdateUniforms();
     }
 
@@ -477,6 +548,8 @@ public:
     void OnDraw() override {
         Renderer::SubmitCommand(RenderCommand::Clear());
         Renderer::BeginScene(m_Camera);
+
+        Renderer::SubmitSkybox(&m_SkyboxMesh);
 
         for (const auto &entity : m_Entities) {
             for (const auto &meshInstance : entity.MeshRenderers()) {
