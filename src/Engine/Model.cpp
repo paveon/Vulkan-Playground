@@ -29,9 +29,11 @@ void Entity::UpdateTransformsUB(const PerspectiveCamera &camera) {
     for (size_t i = 0; i < s_InstanceCount; i++) {
         ubos[i].model = s_ModelMatrices[i];
         ubos[i].view = camera.GetView();
+        ubos[i].projection = camera.GetProjection();
         ubos[i].viewModel = camera.GetView() * s_ModelMatrices[i];
         ubos[i].mvp = camera.GetProjection() * ubos[i].viewModel;
-        ubos[i].normalMatrix = glm::transpose(glm::inverse(camera.GetView() * s_ModelMatrices[i]));
+        ubos[i].viewNormalMatrix = glm::transpose(glm::inverse(camera.GetView() * s_ModelMatrices[i]));
+        ubos[i].modelNormalMatrix = s_NormalMatrices[i];
 //        ubos[i].normalMatrix = camera.GetView() * s_NormalMatrices[i];
 
 //        ubos[i].normalMatrix = m_NormalMatrices[i] * camera.GetView();
@@ -44,8 +46,13 @@ void Entity::UpdateTransformsUB(const PerspectiveCamera &camera) {
 auto ModelAsset::LoadModel(const std::string &filepath) -> std::unique_ptr<ModelAsset> {
 
     static std::unordered_map<Texture2D::Type, aiTextureType> textureTypes{
-            {Texture2D::Type::SPECULAR, aiTextureType_SPECULAR},
-            {Texture2D::Type::DIFFUSE,  aiTextureType_DIFFUSE}
+//            {Texture2D::Type::SPECULAR, aiTextureType_SPECULAR},
+//            {Texture2D::Type::DIFFUSE,  aiTextureType_DIFFUSE},
+            {Texture2D::Type::ALBEDO,   aiTextureType_BASE_COLOR},
+            {Texture2D::Type::METALLIC, aiTextureType_METALNESS},
+            {Texture2D::Type::ROUGHNESS, aiTextureType_DIFFUSE_ROUGHNESS},
+            {Texture2D::Type::AMBIENT_OCCLUSION,  aiTextureType_AMBIENT_OCCLUSION},
+            {Texture2D::Type::NORMAL,   aiTextureType_NORMAL_CAMERA},
     };
 
     Assimp::Importer importer;
@@ -54,7 +61,8 @@ auto ModelAsset::LoadModel(const std::string &filepath) -> std::unique_ptr<Model
                                                        aiProcess_JoinIdenticalVertices |
                                                        aiProcess_RemoveRedundantMaterials |
                                                        aiProcess_OptimizeMeshes |
-                                                       aiProcess_OptimizeGraph);
+                                                       aiProcess_OptimizeGraph |
+                                                       aiProcess_CalcTangentSpace);
     if (!scene || scene->mFlags & (unsigned) AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
         return {};
@@ -69,15 +77,18 @@ auto ModelAsset::LoadModel(const std::string &filepath) -> std::unique_ptr<Model
         aiMaterial *sourceMaterial = scene->mMaterials[materialIdx];
         asset->m_Materials.emplace_back(sourceMaterial->GetName().C_Str());
         asset->m_Textures.emplace_back();
-        auto& materialTextures = asset->m_Textures.back();
+        auto &materialTextures = asset->m_Textures.back();
         for (const auto &type : textureTypes) {
+            VkFormat format = type.first == Texture2D::Type::NORMAL ? VK_FORMAT_R8G8B8A8_UNORM :
+                              VK_FORMAT_R8G8B8A8_SRGB;
+
             auto textureCount = sourceMaterial->GetTextureCount(type.second);
             auto &textures = materialTextures.emplace(type.first, std::vector<const Texture2D *>()).first->second;
             for (unsigned int i = 0; i < textureCount; i++) {
                 sourceMaterial->GetTexture(type.second, i, &tmp);
                 std::string textureName(tmp.C_Str());
                 std::string path = std::string(BASE_DIR "/textures/") + textureName;
-                textures.emplace_back(Texture2D::Create(path.c_str()));
+                textures.emplace_back(Texture2D::Create(path.c_str(), format, true));
 //                asset->m_Materials[materialIdx].BindTextures(type.first, Texture2D::Create(path.c_str()));
             }
         }
@@ -98,6 +109,19 @@ auto ModelAsset::CreateCubeAsset() -> std::unique_ptr<ModelAsset> {
     return asset;
 }
 
+
+auto ModelAsset::CreateQuadAsset() -> std::unique_ptr<ModelAsset> {
+    auto asset = std::make_unique<ModelAsset>();
+    asset->m_Meshes.push_back(std::move(*Mesh::Quad()));
+    return asset;
+}
+
+
+auto ModelAsset::CreateSphereAsset() -> std::unique_ptr<ModelAsset> {
+    auto asset = std::make_unique<ModelAsset>();
+    asset->m_Meshes.push_back(std::move(*Mesh::Sphere()));
+    return asset;
+}
 
 //void Model::SetMaterial(Material *material,
 //                        std::pair<uint32_t, uint32_t> samplerBinding,

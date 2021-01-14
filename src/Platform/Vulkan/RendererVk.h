@@ -39,7 +39,7 @@ public:
         vkDeviceWaitIdle(m_Device);
     }
 
-    auto AcquireNextImage() -> uint32_t;
+    void AcquireNextImage();
 
     void DrawFrame();
 
@@ -54,6 +54,8 @@ public:
     void impl_OnWindowResize(WindowResizeEvent &e) override;
 
     auto impl_GetImageIndex() const -> size_t override { return m_ImageIndex; }
+
+    void impl_SetSkybox(const TextureCubemap* skybox) override;
 
 //    void impl_StageData(void* dstBuffer, uint64_t* dstOffset, const void *data, uint64_t bytes) override {
 //        m_StageBuffer.StageData(static_cast<vk::Buffer **>(dstBuffer), dstOffset, data, bytes);
@@ -78,15 +80,20 @@ public:
 
     auto impl_GetRenderPass() const -> const RenderPass & override { return *m_RenderPass; }
 
+    auto impl_GetPostprocessRenderPass() const -> const RenderPass & override { return *m_PostprocessRenderPass; }
+
 private:
-    static constexpr const char *POST_PROCESS_VS_PATH = BASE_DIR "/shaders/postprocess.vert.spv";
-    static constexpr const char *POST_PROCESS_FS_PATH = BASE_DIR "/shaders/postprocess.frag.spv";
-    static const std::vector<std::pair<const char *, ShaderType>> POST_PROCESS_SHADERS;
+    static const std::map<ShaderType, const char *> POST_PROCESS_SHADERS;
+    static const std::map<ShaderType, const char *> NORMALDEBUG_SHADERS;
+    static const std::map<ShaderType, const char *> SKYBOX_SHADERS;
+    static uint32_t s_SkyboxTexIdx;
 
     const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
     GfxContextVk &m_Context;
     Device &m_Device;
+
+    std::unordered_map<vk::DeviceMemory::UsageType, uint32_t> m_MemoryIndices;
 
     /// TODO: Create some basic device memory management system and maybe a streaming system later?
     std::unordered_map<size_t, MeshAllocationMetadata> m_MeshAllocations;
@@ -97,38 +104,45 @@ private:
 
     vk::CommandPool *m_GfxCmdPool;
     vk::CommandPool *m_TransferCmdPool;
-    vk::CommandBuffers *m_GfxCmdBuffers;
-    vk::CommandBuffers *m_TransferCmdBuffers;
+    vk::CommandBuffers m_GfxCmdBuffers;
+    vk::CommandBuffers m_TransferCmdBuffers;
 
-    vk::DeviceMemory *m_ImageMemory;
-    vk::Image *m_ColorImage;
-    vk::Image *m_DepthImage;
-    vk::ImageView *m_ColorImageView;
-    vk::ImageView *m_DepthImageView;
+    vk::DeviceMemory m_ImageMemory;
+    vk::Image m_MSColorImage;
+    vk::Image m_DepthImage;
+    vk::ImageView m_MSColorImageView;
+    vk::ImageView m_DepthImageView;
 
-    std::vector<vk::Image> m_ColorImages;
-    std::vector<vk::ImageView> m_ColorViews;
-    std::vector<vk::Framebuffer *> m_OffscreenFBOs;
-    std::vector<vk::Framebuffer *> m_FBOs;
+    vk::Image m_ColorImage;
+    vk::ImageView m_ColorImageView;
+    vk::Framebuffer m_OffscreenFBO;
 
-    std::vector<vk::Semaphore *> m_AcquireSemaphores;
-    std::vector<vk::Semaphore *> m_ReleaseSemaphores;
-    std::vector<vk::Fence *> m_Fences;
+    std::vector<vk::Framebuffer> m_FBOs;
 
-    std::unique_ptr<RenderPass> m_RenderPass;
-    std::unique_ptr<RenderPass> m_RenderPass2;
+    std::vector<vk::Semaphore> m_AcquireSemaphores;
+    std::vector<vk::Semaphore> m_ReleaseSemaphores;
+    std::vector<vk::Fence> m_Fences;
+
+    std::unique_ptr<RenderPassVk> m_RenderPass;
+    std::unique_ptr<RenderPassVk> m_PostprocessRenderPass;
     std::unique_ptr<ShaderPipelineVk> m_PostprocessPipeline;
+    std::unique_ptr<ShaderPipelineVk> m_NormalDebugPipeline;
+    std::unique_ptr<ShaderPipelineVk> m_SkyboxPipeline;
 
-    std::array<VkClearValue, 2> m_ClearValues = {};
+    std::unique_ptr<vk::Buffer> m_BasicCubeVBO;
+    std::unique_ptr<vk::DeviceMemory> m_BasicCubeMemory;
+
+//    std::vector<VkClearValue> m_ClearValues = {};
     VkViewport m_Viewport = {};
     VkRect2D m_Scissor = {};
 
+    uint32_t m_SwapchainImageCount = 0;
     uint32_t m_FrameIndex = 0;
     uint32_t m_ImageIndex = 0;
 
     std::vector<VkBufferMemoryBarrier> m_TransferBarriers;
 
-    void createSyncObjects();
+    void CreateSynchronizationPrimitives();
 
     void impl_NextFrame() override {
         AcquireNextImage();
@@ -139,6 +153,8 @@ private:
         if (m_ImGuiLayer) m_ImGuiLayer->EndFrame();
         DrawFrame();
     }
+
+    void CreateImageResources(const vk::Swapchain & swapchain);
 };
 
 

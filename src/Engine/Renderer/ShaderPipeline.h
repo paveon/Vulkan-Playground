@@ -6,6 +6,7 @@
 #include "vulkan_wrappers.h"
 
 #include "UniformBuffer.h"
+#include "ShaderResources.h"
 
 
 struct BindingKey {
@@ -25,7 +26,7 @@ struct BindingKey {
 
     auto operator==(const BindingKey &other) const -> bool { return value == other.value; }
 
-    auto operator<(const BindingKey& other) const -> bool { return value < other.value; }
+    auto operator<(const BindingKey &other) const -> bool { return value < other.value; }
 };
 
 
@@ -141,6 +142,12 @@ struct DepthState {
     float min, max;
 };
 
+struct MultisampleState {
+    VkSampleCountFlagBits sampleCount;
+    VkBool32 sampleShadingEnable;
+    float minSampleShading;
+};
+
 
 class RenderPass;
 
@@ -153,25 +160,13 @@ class TextureCubemap;
 class Material;
 
 class ShaderPipeline {
-public:
-    struct UniformMember {
-        uint32_t offset;
-        uint32_t size;
-    };
-
-    struct Uniform {
-        std::string name;
-        uint32_t size;
-        bool perObject;
-        std::unordered_map<std::string, UniformMember> members;
-    };
-
 protected:
     std::string m_Name;
 
     std::vector<uint8_t> m_VertexLayout;
     std::unordered_map<MaterialKey, uint32_t> m_MaterialBufferOffsets;
-    std::unordered_map<BindingKey, Uniform> m_ShaderUniforms;
+    std::unordered_map<BindingKey, SamplerBinding> m_ShaderSamplers;
+    std::unordered_map<BindingKey, UniformBinding> m_ShaderUniforms;
     std::unordered_map<BindingKey, std::pair<bool, const UniformBuffer *>> m_ActiveUBs;
 
     std::unordered_map<uint32_t, const Material *> m_BoundMaterials;
@@ -183,12 +178,14 @@ public:
     virtual ~ShaderPipeline() = default;
 
     static auto Create(std::string name,
-                       const std::vector<std::pair<const char *, ShaderType>> &shaders,
+                       const std::map<ShaderType, const char *> &shaders,
                        const std::unordered_set<BindingKey> &perObjectUniforms,
                        const RenderPass &renderPass,
                        uint32_t subpassIndex,
+                       VkPrimitiveTopology topology,
                        std::pair<VkCullModeFlags, VkFrontFace> culling,
-                       DepthState depthState) -> std::unique_ptr<ShaderPipeline>;
+                       DepthState depthState,
+                       MultisampleState msState) -> std::unique_ptr<ShaderPipeline>;
 
     auto OnAttach(const Material *material) -> uint32_t {
         auto it = std::find_if(m_BoundMaterials.begin(), m_BoundMaterials.end(), [material](const auto &kv) {
@@ -220,10 +217,11 @@ public:
 
 //    virtual void Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex) = 0;
 
-    virtual auto BindTextures(const std::vector<const Texture2D *> &textures,
-                              BindingKey bindingKey) -> std::vector<uint32_t> = 0;
+    virtual auto BindTextures2D(const std::vector<const Texture2D *> &textures,
+                                BindingKey bindingKey) -> std::vector<uint32_t> = 0;
 
-    virtual auto BindCubemap(const TextureCubemap* texture, BindingKey bindingKey) -> uint32_t = 0;
+    virtual auto BindCubemaps(const std::vector<const TextureCubemap *> &cubemaps,
+                              BindingKey bindingKey) -> std::vector<uint32_t> = 0;
 
     virtual void BindUniformBuffer(const UniformBuffer *buffer, BindingKey bindingKey) = 0;
 
@@ -263,11 +261,11 @@ public:
                 << "' doesn't have '" << memberName << "' member";
             throw std::runtime_error(msg.str().c_str());
         }
-        auto& member = memberIt->second;
+        auto &member = memberIt->second;
         if (member.size != sizeof(T)) {
             std::ostringstream msg;
             msg << "[ShaderPipelineVk::SetUniformData] Invalid size of input data: " << sizeof(T)
-            << " bytes. Member '" << memberName << "' of uniform structure at binding {"
+                << " bytes. Member '" << memberName << "' of uniform structure at binding {"
                 << bindingKey.Set() << ";" << bindingKey.Binding() << "} has size: " << member.size << " bytes";
             throw std::runtime_error(msg.str().c_str());
         }

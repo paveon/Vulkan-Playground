@@ -26,45 +26,80 @@ static auto ShaderTypeToStageFlagBit(ShaderType type) -> VkShaderStageFlagBits {
 
 
 ShaderPipelineVk::ShaderPipelineVk(std::string name,
-                                   const std::vector<std::pair<const char *, ShaderType>> &shaders,
+                                   const std::map<ShaderType, const char *> &shaders,
                                    const std::unordered_set<BindingKey> &perObjectUniforms,
-                                   const RenderPass &renderPass,
+                                   const RenderPassVk &renderPass,
                                    uint32_t subpassIndex,
+                                   VkPrimitiveTopology topology,
                                    std::pair<VkCullModeFlags, VkFrontFace> culling,
-                                   DepthState depthState) :
+                                   DepthState depthState,
+                                   MultisampleState msState) :
         ShaderPipeline(std::move(name)),
         m_Context(static_cast<GfxContextVk &>(Application::GetGraphicsContext())),
         m_Device(m_Context.GetDevice()),
         m_SubpassIndex(subpassIndex) {
 
     auto &device = static_cast<GfxContextVk &>(Application::GetGraphicsContext()).GetDevice();
-    const auto &renderPassVk = static_cast<const RenderPassVk &>(renderPass);
     auto imgCount = m_Context.Swapchain().ImageCount();
 
     /// TODO: expects contiguous set and binding numbers
     std::vector<std::vector<VkDescriptorSetLayoutBinding>> layoutDescriptions;
 
+//    std::vector<VkPushConstantRange> ranges(m_PushRanges.size());
+//    std::transform(m_PushRanges.begin(), m_PushRanges.end(), ranges.begin(), [](auto kv) { return kv.second; });
+
+    std::vector<VkPushConstantRange> mergedStageRanges;
+
     std::unordered_set<BindingKey> usedBindings;
-    for (const auto&[filepath, shaderType] : shaders) {
+    for (const auto&[shaderType, filepath] : shaders) {
         auto *module = device.createShaderModule(filepath);
         auto shaderStageBit = ShaderTypeToStageFlagBit(shaderType);
 
+        VkPushConstantRange mergedRange{
+            shaderStageBit,
+            std::numeric_limits<uint32_t>::max(),
+            0,
+        };
+
         /// Merge active ranges from all modules
         for (const auto&[index, range] : module->GetPushRanges()) {
-            auto it = m_PushRanges.find(index);
+            PushConstantKey key(shaderStageBit, index);
+            mergedRange.size += range.size;
+            mergedRange.offset = std::min(mergedRange.offset, range.offset);
+
+            auto it = m_PushRanges.find(key);
             if (it != m_PushRanges.end()) {
-                it->second.stageFlags |= shaderStageBit;
+                continue;
             } else {
-                m_PushRanges[index] = {
-                        shaderStageBit,
+                /// Check for overlaping
+                VkShaderStageFlags stages = shaderStageBit;
+                for (auto& [pushKey, pushRange] : m_PushRanges) {
+                    if (pushKey.Stage() == shaderStageBit) {
+                        continue;
+                    }
+
+                    uint32_t lowerBound = pushRange.offset;
+                    uint32_t upperBound = pushRange.offset + pushRange.size;
+                    if ((range.offset >= lowerBound) && (range.offset < upperBound)) {
+                        stages |= pushRange.stageFlags;
+//                        pushRange.stageFlags = stages;
+                    }
+                }
+
+                m_PushRanges[key] = {
+                        stages,
                         range.offset,
                         range.size
                 };
             }
         }
 
+        if (mergedRange.size > 0) {
+            mergedStageRanges.push_back(mergedRange);
+        }
 
-        for (const auto&[bindingKeyValue, sampler] : module->GetSamplerBindings()) {
+
+        for (const auto&[bindingKeyValue, binding] : module->GetSamplerBindings()) {
             BindingKey bindingKey(bindingKeyValue);
             if (usedBindings.find(bindingKey) != usedBindings.end())
                 continue;
@@ -80,16 +115,19 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
                 setBindings.resize(bindingIdx + 1);
 
             /// TODO: how to deal with arrays of textures without specified size?
-            uint32_t descriptorCount = sampler.count == 0 ? 10 : sampler.count;
+            const uint32_t DEFAULT_ARRAY_SIZE = 50;
+            uint32_t descriptorCount = (binding.array && binding.count) == 0 ? DEFAULT_ARRAY_SIZE : binding.count;
 
             m_PoolSizes.emplace_back();
-            m_PoolSizes.back().type = sampler.type;
+            m_PoolSizes.back().type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // TODO: allow for another types
             m_PoolSizes.back().descriptorCount = descriptorCount;
 
-            setBindings[bindingIdx].descriptorType = sampler.type;
+            setBindings[bindingIdx].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             setBindings[bindingIdx].binding = bindingIdx;
             setBindings[bindingIdx].descriptorCount = descriptorCount;
             setBindings[bindingIdx].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+            m_ShaderSamplers.emplace(bindingKey, binding);
         }
 
         for (const auto&[bindingKeyValue, binding] : module->GetUniformBindings()) {
@@ -115,28 +153,21 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
             setBindings[bindingIdx].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             setBindings[bindingIdx].binding = bindingIdx;
             setBindings[bindingIdx].descriptorCount = binding.count;
-            setBindings[bindingIdx].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            setBindings[bindingIdx].stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+                                                 | VK_SHADER_STAGE_GEOMETRY_BIT
+                                                 | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-            bool perObject = perObjectUniforms.find(bindingKey) != perObjectUniforms.end();
+            UniformBinding bindingCopy = binding;
+            bindingCopy.perObject = perObjectUniforms.find(bindingKey) != perObjectUniforms.end();
 
-            ShaderPipeline::Uniform uniform{
-                    binding.name,
-                    binding.size,
-                    perObject,
-                    {}
-            };
-            for (const auto& [name, member] : binding.structMembers) {
-                uniform.members.emplace(name, UniformMember{member.offset, member.size});
-            }
-
-            m_ShaderUniforms.emplace(bindingKey, uniform);
+            m_ShaderUniforms.emplace(bindingKey, bindingCopy);
 
             std::ostringstream ubName;
             ubName << "Default UB {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
             m_DefaultUBs.emplace(
                     std::piecewise_construct,
                     std::forward_as_tuple(bindingKey),
-                    std::forward_as_tuple(ubName.str(), binding.size, perObject)
+                    std::forward_as_tuple(ubName.str(), binding.size, bindingCopy.perObject)
             );
         }
         m_ShaderModules[shaderType] = module;
@@ -220,42 +251,35 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
     }
 
 
-    m_Sampler = m_Device.createSampler(0.0);
+    m_Sampler = m_Device.createSampler(10.0f);
     m_Cache = m_Device.createPipelineCache(0, nullptr);
 
-    std::vector<VkPushConstantRange> ranges(m_PushRanges.size());
-    std::transform(m_PushRanges.begin(), m_PushRanges.end(), ranges.begin(), [](auto kv) { return kv.second; });
-
-    m_PipelineLayout = m_Device.createPipelineLayout(m_DescriptorSetLayouts, ranges);
+    m_PipelineLayout = m_Device.createPipelineLayout(m_DescriptorSetLayouts, mergedStageRanges);
 
     m_InputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    m_InputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    m_InputAssembly.topology = topology;
     m_InputAssembly.primitiveRestartEnable = VK_FALSE;
 
     m_Rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     m_Rasterizer.polygonMode = VK_POLYGON_MODE_FILL; //Fill polygons
     m_Rasterizer.lineWidth = 1.0f; //Single fragment line width
-//    m_Rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; //Back-face culling
-//    m_Rasterizer.cullMode = VK_CULL_MODE_NONE; //Back-face culling
-//    m_Rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //Front-facing polygons have vertices in clockwise order
     m_Rasterizer.cullMode = culling.first;
     m_Rasterizer.frontFace = culling.second;
 
-    m_BlendAttachmentState.blendEnable = VK_TRUE;
-    m_BlendAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-                                            VK_COLOR_COMPONENT_G_BIT |
-                                            VK_COLOR_COMPONENT_B_BIT |
-                                            VK_COLOR_COMPONENT_A_BIT;
-    m_BlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    m_BlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    m_BlendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
-    m_BlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    m_BlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    m_BlendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
+    m_BlendStates = std::vector<VkPipelineColorBlendAttachmentState>(renderPass.ColorAttachmentCount(), {
+            VK_FALSE,
+            VK_BLEND_FACTOR_SRC_ALPHA,
+            VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            VK_BLEND_OP_ADD,
+            VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            VK_BLEND_FACTOR_ZERO,
+            VK_BLEND_OP_ADD,
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+    });
 
     m_ColorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    m_ColorBlendState.attachmentCount = 1;
-    m_ColorBlendState.pAttachments = &m_BlendAttachmentState;
+    m_ColorBlendState.attachmentCount = m_BlendStates.size();
+    m_ColorBlendState.pAttachments = m_BlendStates.data();
 
     m_DepthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     m_DepthStencil.depthTestEnable = depthState.testEnable;
@@ -268,32 +292,14 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
     m_DepthStencil.front = {}; // Optional
     m_DepthStencil.back = {}; // Optional
 
-//    if (depthState.testEnable) {
-//        m_DepthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-//        m_DepthStencil.depthTestEnable = VK_TRUE;
-//        m_DepthStencil.depthWriteEnable = VK_TRUE;
-//        m_DepthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-//        m_DepthStencil.depthBoundsTestEnable = VK_FALSE;
-//        m_DepthStencil.minDepthBounds = 0.0f; // Optional
-//        m_DepthStencil.maxDepthBounds = 1.0f; // Optional
-//        m_DepthStencil.stencilTestEnable = VK_FALSE;
-//        m_DepthStencil.front = {}; // Optional
-//        m_DepthStencil.back = {}; // Optional
-//    } else {
-//        m_DepthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-//        m_DepthStencil.depthTestEnable = VK_FALSE;
-//        m_DepthStencil.depthWriteEnable = VK_FALSE;
-//        m_DepthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-//        m_DepthStencil.front = m_DepthStencil.back;
-//        m_DepthStencil.back.compareOp = VK_COMPARE_OP_ALWAYS;
-//    }
-
     m_ViewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     m_ViewportState.viewportCount = 1;
     m_ViewportState.scissorCount = 1;
 
     m_Multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    m_Multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; //TODO
+    m_Multisampling.rasterizationSamples = msState.sampleCount;
+    m_Multisampling.sampleShadingEnable = msState.sampleShadingEnable;
+    m_Multisampling.minSampleShading = msState.minSampleShading;
 
     m_DdynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     m_DdynamicState.dynamicStateCount = m_DynamicStateEnables.size();
@@ -310,7 +316,7 @@ ShaderPipelineVk::ShaderPipelineVk(std::string name,
 
     m_PipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     m_PipelineCreateInfo.layout = m_PipelineLayout->data();
-    m_PipelineCreateInfo.renderPass = renderPassVk.data();
+    m_PipelineCreateInfo.renderPass = renderPass.data();
     m_PipelineCreateInfo.subpass = m_SubpassIndex;
     m_PipelineCreateInfo.pInputAssemblyState = &m_InputAssembly;
     m_PipelineCreateInfo.pRasterizationState = &m_Rasterizer;
@@ -410,17 +416,21 @@ void ShaderPipelineVk::AllocateResources() {
 }
 
 
-void ShaderPipelineVk::Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex, std::optional<uint32_t> materialID) {
+void ShaderPipelineVk::Bind(VkCommandBuffer cmdBuffer) {
     m_CmdBuffer = cmdBuffer;
+
+    vkCmdBindPipeline(m_CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline->data());
+}
+
+
+void ShaderPipelineVk::BindDescriptorSets(uint32_t imageIndex, std::optional<uint32_t> materialID) {
     m_ImageIndex = imageIndex;
 
     uint32_t setCount = m_DescriptorSetLayouts.size();  /// Number of layouts == stride
     uint32_t firstSet = setCount * m_ImageIndex;
 
-    vkCmdBindPipeline(m_CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline->data());
-
     size_t uniformIdx = 0;
-    for (const auto& bindingKey : m_UniformBindings) {
+    for (const auto &bindingKey : m_UniformBindings) {
         auto ubIt = m_ActiveUBs.find(bindingKey);
         if (ubIt != m_ActiveUBs.end()) {
             const auto&[isDefault, ub] = ubIt->second;
@@ -476,7 +486,7 @@ void ShaderPipelineVk::SetDynamicOffsets(uint32_t objectIndex,
     std::vector<uint32_t> dynamicOffsets = m_BaseDynamicOffsets;
 
     size_t uniformIdx = 0;
-    for (const auto& bindingKey : m_UniformBindings) {
+    for (const auto &bindingKey : m_UniformBindings) {
         uint32_t offset = objectIndex;
         auto customOffsetIt = customOffsets.find(bindingKey);
         if (customOffsetIt != customOffsets.end()) {
@@ -546,18 +556,26 @@ void ShaderPipelineVk::BindUniformBuffer(const UniformBuffer *buffer, BindingKey
     vkUpdateDescriptorSets(m_Device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 }
 
-auto ShaderPipelineVk::BindTextures(const std::vector<const Texture2D *> &textures,
-                                    BindingKey bindingKey) -> std::vector<uint32_t> {
 
-    std::vector<VkImageView> textureImageViews(textures.size());
-    std::transform(textures.begin(), textures.end(), textureImageViews.begin(), [](const Texture2D *tex) {
-        return static_cast<const Texture2DVk *>(tex)->View().data();
-    });
-    return BindTextures(textureImageViews, bindingKey);
-}
+auto ShaderPipelineVk::BindImageViews(const std::vector<VkImageView> &textures,
+                                      BindingKey bindingKey,
+                                      SamplerBinding::Type type) -> std::vector<uint32_t> {
 
-auto ShaderPipelineVk::BindTextures(const std::vector<VkImageView> &textures,
-                                    BindingKey bindingKey) -> std::vector<uint32_t> {
+    auto bindingIt = m_ShaderSamplers.find(bindingKey);
+    if (bindingIt == m_ShaderSamplers.end()) {
+        std::ostringstream msg;
+        msg << "[ShaderPipelineVk::BindImageViews] Pipeline '" << m_Name
+            << "' doesn't have Sampler binding (" << bindingKey.Set() << ";" << bindingKey.Binding() << ")";
+        throw std::runtime_error(msg.str().c_str());
+    }
+
+    const auto& sampler = bindingIt->second;
+    if (sampler.type != type) {
+        std::ostringstream msg;
+        msg << "[ShaderPipelineVk::BindImageViews] Pipeline '" << m_Name
+            << "' SamplerBinding (" << bindingKey.Set() << ";" << bindingKey.Binding() << ") has invalid type";
+        throw std::runtime_error(msg.str().c_str());
+    }
 
     /// Update binding metadata and return continuous indices of newly bound textures
     auto it = m_BoundTextures.find(bindingKey);
@@ -565,6 +583,20 @@ auto ShaderPipelineVk::BindTextures(const std::vector<VkImageView> &textures,
         it = m_BoundTextures.emplace(bindingKey, std::vector<VkImageView>()).first;
     }
     auto &boundTextures = it->second;
+
+    if (!sampler.array && textures.size() == 1) {
+        /// Just replace the previously bound texture if the sampler is not an array
+        boundTextures.clear();
+    }
+
+    if (sampler.count > 0 && ((boundTextures.size() + textures.size()) > sampler.count)) {
+        std::ostringstream msg;
+        msg << "[ShaderPipelineVk::BindImageViews] Pipeline '" << m_Name
+            << "' SamplerBinding (" << bindingKey.Set() << ";" << bindingKey.Binding() << ") can hold only '"
+            << sampler.count << "' textures";
+        throw std::runtime_error(msg.str().c_str());
+    }
+
     std::vector<uint32_t> texIndices(textures.size());
     std::iota(texIndices.begin(), texIndices.end(), boundTextures.size());
 
@@ -598,44 +630,64 @@ auto ShaderPipelineVk::BindTextures(const std::vector<VkImageView> &textures,
     return texIndices;
 }
 
-auto ShaderPipelineVk::BindCubemap(const TextureCubemap *texture, BindingKey bindingKey) -> uint32_t {
-    /// Update binding metadata and return continuous indices of newly bound textures
-    VkImageView textureView = static_cast<const TextureCubemapVk *>(texture)->View().data();
-    auto it = m_BoundTextures.find(bindingKey);
-    if (it == m_BoundTextures.end()) {
-        it = m_BoundTextures.emplace(bindingKey, std::vector<VkImageView>()).first;
-    }
-    auto &boundTextures = it->second;
-    uint32_t texIndex = boundTextures.size();
-    boundTextures.push_back(textureView);
 
-    auto imgCount = m_Context.Swapchain().ImageCount();
-    auto layoutCount = m_DescriptorSetLayouts.size();
-
-    std::vector<VkDescriptorImageInfo> textureDescriptors(boundTextures.size());
-    for (size_t i = 0; i < boundTextures.size(); i++) {
-        textureDescriptors[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        textureDescriptors[i].imageView = boundTextures[i];
-        textureDescriptors[i].sampler = m_Sampler->data();
-    }
-
-    /// TODO: doesn't work if descriptor sets numbers are not continuous and starting from 0
-    /// TODO: need to do internal remapping...
-    std::vector<VkWriteDescriptorSet> writeDescriptorSets(imgCount);
-    for (uint32_t i = 0; i < imgCount; i++) {
-        writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDescriptorSets[i].dstSet = m_DescriptorSets->get((i * layoutCount) + bindingKey.Set());
-        writeDescriptorSets[i].dstBinding = bindingKey.Binding();
-        writeDescriptorSets[i].dstArrayElement = 0;
-        writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writeDescriptorSets[i].descriptorCount = boundTextures.size();
-        writeDescriptorSets[i].pImageInfo = textureDescriptors.data();
-    }
-
-    vkUpdateDescriptorSets(m_Device, writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
-
-    return texIndex;
+auto ShaderPipelineVk::BindTextures2D(const std::vector<const Texture2D *> &textures,
+                                      BindingKey bindingKey) -> std::vector<uint32_t> {
+    std::vector<VkImageView> textureImageViews(textures.size());
+    std::transform(textures.begin(), textures.end(), textureImageViews.begin(), [](const Texture2D *tex) {
+        return static_cast<const Texture2DVk *>(tex)->View().data();
+    });
+    return BindTextures2D(textureImageViews, bindingKey);
 }
+
+
+auto ShaderPipelineVk::BindCubemaps(const std::vector<const TextureCubemap *>& cubemaps,
+                                    BindingKey bindingKey) -> std::vector<uint32_t> {
+
+    std::vector<VkImageView> textureImageViews(cubemaps.size());
+    std::transform(cubemaps.begin(), cubemaps.end(), textureImageViews.begin(), [](const TextureCubemap *tex) {
+        return static_cast<const TextureCubemapVk *>(tex)->View().data();
+    });
+    return BindCubemaps(textureImageViews, bindingKey);
+
+//    /// Update binding metadata and return continuous indices of newly bound textures
+//    VkImageView textureView = static_cast<const TextureCubemapVk *>(cubemaps)->View().data();
+//    auto it = m_BoundTextures.find(bindingKey);
+//    if (it == m_BoundTextures.end()) {
+//        it = m_BoundTextures.emplace(bindingKey, std::vector<VkImageView>()).first;
+//    }
+//    auto &boundTextures = it->second;
+//    uint32_t texIndex = boundTextures.size();
+//    boundTextures.push_back(textureView);
+//
+//    auto imgCount = m_Context.Swapchain().ImageCount();
+//    auto layoutCount = m_DescriptorSetLayouts.size();
+//
+//    std::vector<VkDescriptorImageInfo> textureDescriptors(boundTextures.size());
+//    for (size_t i = 0; i < boundTextures.size(); i++) {
+//        textureDescriptors[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+//        textureDescriptors[i].imageView = boundTextures[i];
+//        textureDescriptors[i].sampler = m_Sampler->data();
+//    }
+//
+//    /// TODO: doesn't work if descriptor sets numbers are not continuous and starting from 0
+//    /// TODO: need to do internal remapping...
+//    std::vector<VkWriteDescriptorSet> writeDescriptorSets(imgCount);
+//    for (uint32_t i = 0; i < imgCount; i++) {
+//        writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+//        writeDescriptorSets[i].dstSet = m_DescriptorSets->get((i * layoutCount) + bindingKey.Set());
+//        writeDescriptorSets[i].dstBinding = bindingKey.Binding();
+//        writeDescriptorSets[i].dstArrayElement = 0;
+//        writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+//        writeDescriptorSets[i].descriptorCount = boundTextures.size();
+//        writeDescriptorSets[i].pImageInfo = textureDescriptors.data();
+//    }
+//
+//    vkUpdateDescriptorSets(m_Device, writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
+//
+//    return texIndex;
+}
+
 
 void ShaderPipelineVk::SetUniformData(uint32_t materialID,
                                       BindingKey bindingKey,
@@ -704,3 +756,4 @@ auto ShaderPipelineVk::createInfo() const -> std::vector<VkPipelineShaderStageCr
 
     return stagesCreateInfo;
 }
+

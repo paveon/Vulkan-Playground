@@ -30,13 +30,13 @@ auto Device::pickPhysicalDevice() -> VkPhysicalDevice {
         vkGetPhysicalDeviceProperties(device, &m_Properties);
         vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-        if (supportedFeatures.samplerAnisotropy) {
+        if (supportedFeatures.samplerAnisotropy && supportedFeatures.geometryShader) {
             if (m_Properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
                 std::cout << "[Vulkan] Picking discrete GPU: " << m_Properties.deviceName << std::endl;
                 VkSampleCountFlags counts = std::min(m_Properties.limits.framebufferColorSampleCounts,
                                                      m_Properties.limits.framebufferDepthSampleCounts);
 
-                for (uint32_t i = VK_SAMPLE_COUNT_2_BIT; i <= VK_SAMPLE_COUNT_64_BIT; i <<= 1u) {
+                for (uint32_t i = VK_SAMPLE_COUNT_1_BIT; i <= VK_SAMPLE_COUNT_64_BIT; i <<= 1u) {
                     if (counts & i) m_SupportedSamplesMSAA.emplace_back((VkSampleCountFlagBits)i);
                 }
                 return device;

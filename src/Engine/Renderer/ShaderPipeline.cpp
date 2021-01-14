@@ -5,22 +5,26 @@
 
 
 auto ShaderPipeline::Create(std::string name,
-                            const std::vector<std::pair<const char *, ShaderType>> &shaders,
+                            const std::map<ShaderType, const char *> &shaders,
                             const std::unordered_set<BindingKey> &perObjectUniforms,
                             const RenderPass &renderPass,
                             uint32_t subpassIndex,
+                            VkPrimitiveTopology topology,
                             std::pair<VkCullModeFlags, VkFrontFace> culling,
-                            DepthState depthState) -> std::unique_ptr<ShaderPipeline> {
+                            DepthState depthState,
+                            MultisampleState msState) -> std::unique_ptr<ShaderPipeline> {
 
     switch (RendererAPI::GetSelectedAPI()) {
         case RendererAPI::API::VULKAN:
             return std::make_unique<ShaderPipelineVk>(std::move(name),
                                                       shaders,
                                                       perObjectUniforms,
-                                                      renderPass,
+                                                      static_cast<const RenderPassVk &>(renderPass),
                                                       subpassIndex,
+                                                      topology,
                                                       culling,
-                                                      depthState);
+                                                      depthState,
+                                                      msState);
     }
 
     return nullptr;

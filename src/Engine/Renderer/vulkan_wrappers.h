@@ -11,6 +11,7 @@
 #include <map>
 #include <spirv_cross.hpp>
 #include <spirv_glsl.hpp>
+#include "ShaderResources.h"
 
 typedef struct GLFWwindow GLFWwindow;
 
@@ -145,7 +146,12 @@ namespace vk {
         void Submit(VkSubmitInfo &submitInfo, VkQueue cmdQueue, VkFence fence = nullptr) const {
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers = &m_Buffer;
-            vkQueueSubmit(cmdQueue, 1, &submitInfo, fence);
+            VkResult result = vkQueueSubmit(cmdQueue, 1, &submitInfo, fence);
+            if (result != VK_SUCCESS) {
+                std::ostringstream msg;
+                msg << "[vkQueueSubmit] Failed to submit draw command buffer, error code: '" << result << "'";
+                throw std::runtime_error(msg.str().c_str());
+            }
         }
     };
 
@@ -190,7 +196,6 @@ namespace vk {
             allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             allocInfo.commandPool = m_Pool;
             allocInfo.level = level;
-//            allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocInfo.commandBufferCount = count;
 
             m_Buffers.resize(count);
@@ -221,32 +226,6 @@ namespace vk {
         auto data() const -> const VkCommandBuffer * { return m_Buffers.data(); }
 
         auto size() const -> uint32_t { return m_Buffers.size(); }
-
-//        void Begin(VkCommandBufferUsageFlags flags = 0) const { Begin(0, flags); }
-//
-//        void Begin(size_t index, VkCommandBufferUsageFlags flags = 0) const {
-//            operator[](index).Begin(flags);
-//        }
-//
-//        void End() const { End(0); }
-//
-//        void End(size_t index) const {
-//            operator[](index).End();
-//        }
-//
-//        void Submit(VkQueue cmdQueue) const { Submit(0, cmdQueue); }
-//
-//        void Submit(size_t index, VkQueue cmdQueue) const {
-//            operator[](index).Submit(cmdQueue);
-//        }
-//
-//        void Submit(VkSubmitInfo &submitInfo, VkQueue cmdQueue, VkFence fence = nullptr) const {
-//            Submit(0, submitInfo, cmdQueue, fence);
-//        }
-//
-//        void Submit(size_t index, VkSubmitInfo &submitInfo, VkQueue cmdQueue, VkFence fence = nullptr) const {
-//            operator[](index).Submit(submitInfo, cmdQueue, fence);
-//        }
     };
 
 
@@ -393,10 +372,12 @@ namespace vk {
     private:
         VkFramebuffer m_Framebuffer = nullptr;
         VkDevice m_Device = nullptr;
+        VkExtent2D m_Extent{};
 
         void Move(Framebuffer &other) noexcept {
             m_Framebuffer = other.m_Framebuffer;
             m_Device = other.m_Device;
+            m_Extent = other.m_Extent;
             other.m_Framebuffer = nullptr;
             other.m_Device = nullptr;
         }
@@ -408,13 +389,16 @@ namespace vk {
 
         Framebuffer() = default;
 
-        Framebuffer(VkDevice device, VkRenderPass renderPass, const VkExtent2D &extent,
-                    const std::vector<VkImageView> &attachments) : m_Device(device) {
+        Framebuffer(VkDevice device,
+                    VkRenderPass renderPass,
+                    const VkExtent2D &extent,
+                    const std::vector<VkImageView> &attachments) :
+                m_Device(device), m_Extent(extent) {
             VkFramebufferCreateInfo framebufferInfo = {};
             framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             framebufferInfo.renderPass = renderPass;
-            framebufferInfo.width = extent.width;
-            framebufferInfo.height = extent.height;
+            framebufferInfo.width = m_Extent.width;
+            framebufferInfo.height = m_Extent.height;
             framebufferInfo.layers = 1;
             framebufferInfo.attachmentCount = attachments.size();
             framebufferInfo.pAttachments = attachments.data();
@@ -439,6 +423,8 @@ namespace vk {
         auto ptr() const noexcept -> const VkFramebuffer * { return &m_Framebuffer; }
 
         auto data() const noexcept -> const VkFramebuffer & { return m_Framebuffer; }
+
+        auto Extent() const noexcept -> const VkExtent2D & { return m_Extent; }
     };
 
     class Image;
@@ -461,6 +447,11 @@ namespace vk {
         ~ImageView() { Release(); }
 
         ImageView() = default;
+
+        ImageView(VkDevice device, const VkImageViewCreateInfo &createInfo) : m_Device(device) {
+            if (vkCreateImageView(m_Device, &createInfo, nullptr, &m_ImageView) != VK_SUCCESS)
+                throw std::runtime_error("failed to create image views!");
+        }
 
         ImageView(VkDevice device, VkImage image, VkFormat format, uint32_t mipLevels, VkImageAspectFlags aspectFlags)
                 : m_Device(device) {
@@ -513,33 +504,9 @@ namespace vk {
         VkImageCreateInfo m_Info{};
         VkMemoryRequirements m_MemoryInfo{};
 
-        VkImageLayout m_CurrentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        VkPipelineStageFlags m_CurrentStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-
-        static constexpr VkImageMemoryBarrier s_BaseBarrier = {
-                VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                nullptr,
-                0,
-                0,
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_QUEUE_FAMILY_IGNORED,
-                VK_QUEUE_FAMILY_IGNORED,
-                nullptr,
-                {
-                        VK_IMAGE_ASPECT_COLOR_BIT,
-                        0,
-                        1,
-                        0,
-                        1
-                }
-        };
-
         void Move(Image &other) noexcept {
             m_Image = other.m_Image;
             m_Device = other.m_Device;
-            m_CurrentLayout = other.m_CurrentLayout;
-            m_CurrentStage = other.m_CurrentStage;
             m_Info = other.m_Info;
             m_MemoryInfo = other.m_MemoryInfo;
             other.m_Image = nullptr;
@@ -618,24 +585,48 @@ namespace vk {
 
         auto data() const noexcept -> const VkImage & { return m_Image; }
 
-//        auto createView(VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT) -> ImageView* {
-//            return ImageView(m_Device, m_Image, format, m_MipLevels, aspectFlags);
-//        }
-
         auto MipLevels() const -> uint32_t { return m_Info.mipLevels; }
 
-        void ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout);
+        VkImageMemoryBarrier GetBaseBarrier(VkImageLayout srcLayout,
+                                            VkImageLayout dstLayout,
+                                            VkAccessFlags srcAccess,
+                                            VkAccessFlags dstAccess) {
+            return VkImageMemoryBarrier{
+                    VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                    nullptr,
+                    srcAccess,
+                    dstAccess,
+                    srcLayout,
+                    dstLayout,
+                    VK_QUEUE_FAMILY_IGNORED,
+                    VK_QUEUE_FAMILY_IGNORED,
+                    m_Image,
+                    {
+                            VK_IMAGE_ASPECT_COLOR_BIT,
+                            0,
+                            1,
+                            0,
+                            1
+                    }
+            };
+        }
 
-        void ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout, VkPipelineStageFlags dstStage,
-                          VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
+        void ChangeLayout(const CommandBuffer &cmdBuffer,
+                          VkImageLayout srcLayout,
+                          VkImageLayout dstLayout,
+                          VkPipelineStageFlags srcStages,
+                          VkPipelineStageFlags dstStages,
+                          VkAccessFlags srcMask,
+                          VkAccessFlags dstMask,
+                          const std::vector<VkImageSubresourceRange> &subresources);
 
         void GenerateMipmaps(VkPhysicalDevice physicalDevice, const CommandBuffer &cmdBuffer);
 
         auto MemoryInfo() const -> const VkMemoryRequirements & { return m_MemoryInfo; }
 
-        auto Info() const -> const auto& { return m_Info; }
+        auto Info() const -> const auto & { return m_Info; }
 
-        auto Extent() const -> const VkExtent3D& { return m_Info.extent; }
+        auto Extent() const -> const VkExtent3D & { return m_Info.extent; }
 
         void BindMemory(VkDeviceMemory memory, VkDeviceSize offset) {
             if (vkBindImageMemory(m_Device, m_Image, memory, offset) != VK_SUCCESS)
@@ -656,10 +647,6 @@ namespace vk {
         createInfo.viewType = viewType;
         createInfo.format = image.Info().format;
         createInfo.image = image.data();
-        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
         createInfo.subresourceRange.aspectMask = aspectFlags;
         createInfo.subresourceRange.baseMipLevel = 0;
         createInfo.subresourceRange.levelCount = image.Info().mipLevels;
@@ -676,11 +663,13 @@ namespace vk {
         VkBuffer m_Buffer = nullptr;
         VkDevice m_Device = nullptr;
         VkDeviceSize m_Size = 0;
+        VkMemoryRequirements m_MemoryInfo{};
 
         void Move(Buffer &other) noexcept {
             m_Buffer = other.m_Buffer;
             m_Device = other.m_Device;
             m_Size = other.m_Size;
+            m_MemoryInfo = other.m_MemoryInfo;
             other.m_Buffer = nullptr;
             other.m_Device = nullptr;
         }
@@ -712,6 +701,8 @@ namespace vk {
 
             if (vkCreateBuffer(m_Device, &bufferInfo, nullptr, &m_Buffer) != VK_SUCCESS)
                 throw std::runtime_error("failed to create buffer!");
+
+            vkGetBufferMemoryRequirements(m_Device, m_Buffer, &m_MemoryInfo);
         }
 
         Buffer(const Buffer &other) = delete;
@@ -733,6 +724,8 @@ namespace vk {
 
         auto data() const noexcept -> const VkBuffer & { return m_Buffer; }
 
+        auto MemoryInfo() const -> const VkMemoryRequirements & { return m_MemoryInfo; }
+
         void BindMemory(VkDeviceMemory memory, VkDeviceSize offset) {
             if (vkBindBufferMemory(m_Device, m_Buffer, memory, offset) != VK_SUCCESS)
                 throw std::runtime_error("failed to bind memory to buffer!");
@@ -741,6 +734,11 @@ namespace vk {
 
 
     class DeviceMemory {
+    public:
+        enum class UsageType {
+            DEVICE_LOCAL_LARGE
+        };
+
     private:
         VkDevice m_Device = nullptr;
         VkDeviceMemory m_Memory = nullptr;
@@ -778,6 +776,12 @@ namespace vk {
         DeviceMemory(VkPhysicalDevice physDevice,
                      VkDevice device,
                      const std::vector<const Image *> &images,
+                     std::optional<VkDeviceSize> sizeOverride,
+                     VkMemoryPropertyFlags flags);
+
+        DeviceMemory(VkPhysicalDevice physDevice,
+                     VkDevice device,
+                     const std::vector<const Buffer *> &buffers,
                      VkMemoryPropertyFlags flags);
 
         DeviceMemory(VkDevice device, uint32_t memoryTypeIdx, VkDeviceSize size) : m_Device(device) {
@@ -1157,28 +1161,7 @@ namespace vk {
 
         Sampler() = default;
 
-        explicit Sampler(VkDevice device, float maxLod) : m_Device(device) {
-            VkSamplerCreateInfo samplerInfo = {};
-            samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-            samplerInfo.magFilter = VK_FILTER_LINEAR;
-            samplerInfo.minFilter = VK_FILTER_LINEAR;
-            samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            samplerInfo.anisotropyEnable = VK_TRUE;
-            samplerInfo.maxAnisotropy = 16;
-            samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
-            samplerInfo.unnormalizedCoordinates = VK_FALSE;
-            samplerInfo.compareEnable = VK_FALSE;
-            samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-            samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            samplerInfo.mipLodBias = 0.0f;
-            samplerInfo.minLod = 0.0f;
-            samplerInfo.maxLod = maxLod / 2;
-
-            if (vkCreateSampler(m_Device, &samplerInfo, nullptr, &m_Sampler) != VK_SUCCESS)
-                throw std::runtime_error("failed to create texture sampler!");
-        }
+        Sampler(VkDevice device, float maxLod);
 
         Sampler(const Sampler &other) = delete;
 
@@ -1201,19 +1184,13 @@ namespace vk {
 
     class ShaderModule {
     public:
-        struct UniformMember{
-//            VkFormat format;
-            uint32_t offset;
-            uint32_t size;
-        };
-
         struct VertexAttribute {
             std::string name;
             VkFormat format;
             uint32_t size;
 
             auto operator==(const VertexAttribute &other) const -> bool {
-                return name == other.name && format == other.format && size == other.size;
+                return format == other.format && size == other.size;
             }
 
             auto operator!=(const VertexAttribute &other) const -> bool {
@@ -1227,17 +1204,6 @@ namespace vk {
             VkVertexInputRate inputRate;
         };
 
-        struct UniformBinding {
-            std::string name;
-            uint32_t size;
-            uint32_t count;
-            std::unordered_map<std::string, UniformMember> structMembers;
-        };
-
-        struct SamplerBinding {
-            VkDescriptorType type;
-            uint32_t count;
-        };
 
     private:
         std::unordered_map<uint32_t, UniformBinding> m_UniformBindings;
@@ -1260,7 +1226,7 @@ namespace vk {
 
         void Release() noexcept { if (m_Module) vkDestroyShaderModule(m_Device, m_Module, nullptr); }
 
-        static auto ParseSpirVType(const spirv_cross::SPIRType& type) -> std::pair<VkFormat, uint32_t>;
+        static auto ParseSpirVType(const spirv_cross::SPIRType &type) -> std::pair<VkFormat, uint32_t>;
 
         void ExtractIO(const spirv_cross::CompilerGLSL &compiler,
                        const spirv_cross::SmallVector<spirv_cross::Resource> &resources,

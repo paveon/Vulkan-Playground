@@ -124,9 +124,9 @@ public:
 
     auto queueIndex(QueueFamily family) const -> uint32_t { return m_LogicalDevice.queueIndex(family); }
 
-    static auto maxSamples() -> VkSampleCountFlagBits {
-        return VK_SAMPLE_COUNT_1_BIT;
-        //return m_MsaaSamples; //TODO
+    auto maxSamples() -> VkSampleCountFlagBits {
+//        return VK_SAMPLE_COUNT_1_BIT;
+        return m_SupportedSamplesMSAA.back();
     }
 
     auto createBuffer(const std::set<uint32_t> &queueIndices, VkDeviceSize bufferSize, VkBufferUsageFlags usage,
@@ -151,7 +151,7 @@ public:
             VkMemoryPropertyFlags flags) -> vk::DeviceMemory * {
 
         m_DeviceMemories.emplace_back(std::make_unique<vk::DeviceMemory>(
-                m_PhysicalDevice, m_LogicalDevice.data(), images, flags));
+                m_PhysicalDevice, m_LogicalDevice.data(), images, std::optional<VkDeviceSize>{}, flags));
 
         return m_DeviceMemories.back().get();
     }

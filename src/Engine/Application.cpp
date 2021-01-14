@@ -52,10 +52,8 @@ void Application::Run() {
                 ProcessEventQueue();
 
                 Renderer::NewFrame();
-
                 m_LayerStack.UpdateLayers(timestep);
                 m_LayerStack.DrawLayers();
-
                 Renderer::PresentFrame();
 
 //                submitBuffers.clear();

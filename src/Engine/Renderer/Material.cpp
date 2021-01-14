@@ -50,10 +50,12 @@ void Material::SetShaderPipeline(std::shared_ptr<ShaderPipeline> pipeline) {
 //}
 
 void Material::UpdateUniforms() {
-    for (const auto& [key, sharedUniform] : m_SharedUniformData) {
+    for (const auto&[key, sharedUniform] : m_SharedUniformData) {
         if (sharedUniform.perObject) {
-            auto& uniform = m_UniformData.find(key)->second;
-            m_ShaderPipeline->SetUniformData(m_MaterialID, key, uniform.data.data(), m_InstanceCount);
+            if (m_InstanceCount > 0) {
+                auto &uniform = m_UniformData.find(key)->second;
+                m_ShaderPipeline->SetUniformData(m_MaterialID, key, uniform.data.data(), m_InstanceCount);
+            }
         } else {
             m_ShaderPipeline->SetUniformData(m_MaterialID, key, sharedUniform.data.data(), 1);
         }
@@ -70,56 +72,111 @@ void Material::UpdateUniforms() {
 //    }
 }
 
-auto Material::BindTextures(const std::vector<std::pair<Texture2D::Type, const Texture2D *>> &textures,
-                                             BindingKey bindingKey) -> std::vector<uint32_t> {
+//auto Material::BindTextures(const std::vector<std::pair<Texture2D::Type, const Texture2D *>> &textures,
+//                            BindingKey bindingKey) -> std::vector<uint32_t> {
+//
+//    if (!m_ShaderPipeline) {
+//        std::cout << "[(" << m_Name << ")->BindTextures] Missing ShaderProgram, ignoring texture bind" << std::endl;
+//        return {};
+//    }
+//
+//    std::vector<BoundTexture2D> metadata(textures.size());
+//    std::vector<const Texture2D *> tmp(textures.size());
+//    for (size_t i = 0; i < textures.size(); i++) {
+//        metadata[i].texture = textures[i].second;
+//        tmp[i] = textures[i].second;
+//    }
+//
+//    auto indices = m_ShaderPipeline->BindTextures(tmp, bindingKey);
+//    for (size_t i = 0; i < textures.size(); i++) {
+//        metadata[i].samplerIdx = indices[i];
+//    }
+//
+//    for (size_t i = 0; i < textures.size(); i++) {
+//        const auto&[texType, texture] = textures[i];
+//        TextureKey key(bindingKey, texType);
+//        auto it = m_BoundTextures2D.find(key);
+//        if (it == m_BoundTextures2D.end()) {
+//            it = m_BoundTextures2D.emplace(key, std::vector<BoundTexture2D>()).first;
+//        }
+//        it->second.push_back(metadata[i]);
+//    }
+//
+//    return indices;
+//}
+
+
+auto Material::BindTextures(const std::unordered_map<Texture2D::Type, const Texture2D *> &textures,
+                            BindingKey bindingKey) -> std::unordered_map<Texture2D::Type, uint32_t> {
 
     if (!m_ShaderPipeline) {
-        std::cout << "[(" << m_Name << ")->BindTextures] Missing ShaderProgram, ignoring texture bind" << std::endl;
+        std::cout << "[(" << m_Name << ")->BindTextures2D] Missing ShaderProgram, ignoring texture bind" << std::endl;
         return {};
     }
 
-    std::vector<BoundTexture2D> metadata(textures.size());
-    std::vector<const Texture2D *> tmp(textures.size());
-    for (size_t i = 0; i < textures.size(); i++) {
-        metadata[i].texture = textures[i].second;
-        tmp[i] = textures[i].second;
-    }
+    std::vector<const Texture2D *> textureVector(textures.size());
+    std::transform(textures.begin(), textures.end(), textureVector.begin(), [](auto x) { return x.second; });
 
-    auto indices = m_ShaderPipeline->BindTextures(tmp, bindingKey);
-    for (size_t i = 0; i < textures.size(); i++) {
-        metadata[i].samplerIdx = indices[i];
-    }
+    auto indices = m_ShaderPipeline->BindTextures2D(textureVector, bindingKey);
+    std::unordered_map<Texture2D::Type, uint32_t> mapping;
+    size_t idx = 0;
+    for (const auto&[type, texture] : textures) {
+        mapping.emplace(type, indices[idx]);
 
-    for (size_t i = 0; i < textures.size(); i++) {
-        const auto&[texType, texture] = textures[i];
-        TextureKey key(bindingKey, texType);
+        TextureKey key(bindingKey, type);
         auto it = m_BoundTextures2D.find(key);
         if (it == m_BoundTextures2D.end()) {
             it = m_BoundTextures2D.emplace(key, std::vector<BoundTexture2D>()).first;
         }
-        it->second.push_back(metadata[i]);
+        it->second.push_back(BoundTexture2D{texture, indices[idx]});
+
+        idx++;
     }
 
-    return indices;
+    return mapping;
 }
 
-auto Material::BindCubemap(const TextureCubemap* texture, BindingKey bindingKey) -> uint32_t {
+
+auto Material::BindCubemaps(const std::unordered_map<TextureCubemap::Type, const TextureCubemap *>& textures,
+                           BindingKey bindingKey) -> std::unordered_map<TextureCubemap::Type, uint32_t> {
     if (!m_ShaderPipeline) {
-        std::cout << "[(" << m_Name << ")->BindTextures] Missing ShaderProgram, ignoring texture bind" << std::endl;
+        std::cout << "[(" << m_Name << ")->BindCubemaps] Missing ShaderProgram, ignoring texture bind" << std::endl;
         return {};
     }
 
-    BoundCubemap metadata{
-            texture,
-            m_ShaderPipeline->BindCubemap(texture, bindingKey)
-    };
+    std::vector<const TextureCubemap *> textureVector(textures.size());
+    std::transform(textures.begin(), textures.end(), textureVector.begin(), [](auto x) { return x.second; });
 
-    auto it = m_BoundCubemaps.find(bindingKey);
-    if (it == m_BoundCubemaps.end()) {
-        it = m_BoundCubemaps.emplace(bindingKey, std::vector<BoundCubemap>()).first;
+    auto indices = m_ShaderPipeline->BindCubemaps(textureVector, bindingKey);
+    std::unordered_map<TextureCubemap::Type, uint32_t> mapping;
+    size_t idx = 0;
+    for (const auto&[type, texture] : textures) {
+        mapping.emplace(type, indices[idx]);
+
+        TextureKey key(bindingKey, type);
+        auto it = m_BoundCubemaps.find(key);
+        if (it == m_BoundCubemaps.end()) {
+            it = m_BoundCubemaps.emplace(key, std::vector<BoundCubemap>()).first;
+        }
+        it->second.push_back(BoundCubemap{texture, indices[idx]});
+
+        idx++;
     }
-    it->second.push_back(metadata);
-    return metadata.samplerIdx;
+
+    return mapping;
+
+//    auto indices = m_ShaderPipeline->BindCubemaps({texture}, bindingKey);
+//    BoundCubemap metadata{
+//            texture,
+//            0
+//    };
+//
+//    auto it = m_BoundCubemaps.find(bindingKey);
+//    if (it == m_BoundCubemaps.end()) {
+//        it = m_BoundCubemaps.emplace(bindingKey, std::vector<BoundCubemap>()).first;
+//    }
+//    it->second.push_back(metadata);
+//    return metadata.samplerIdx;
 }
 
 auto Material::CreateInstance() -> MaterialInstance {

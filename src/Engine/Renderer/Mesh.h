@@ -19,6 +19,8 @@ inline void hash_combine(std::size_t &s, const T &v) {
 struct Vertex {
     glm::vec3 position;
     glm::vec3 normal;
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
     glm::vec2 texCoords;
 };
 
@@ -59,6 +61,8 @@ public:
         m_MaterialInstance = std::move(material);
     }
 
+    auto GetMaterialInstance() -> MaterialInstance & { return m_MaterialInstance; }
+
     auto GetMaterialInstance() const -> const MaterialInstance & { return m_MaterialInstance; }
 
     auto GetMaterial() const -> const Material * { return m_MaterialInstance.GetMaterial(); }
@@ -84,6 +88,7 @@ private:
     std::optional<uint32_t> m_AssimpMaterialIdx;
 
 public:
+    const static std::array<glm::vec3, 36> s_CubeVertexPositions;
 
     Mesh() : m_MeshID(s_MeshIdCounter++) {};
 
@@ -106,6 +111,10 @@ public:
     }
 
     static auto Cube() -> std::unique_ptr<Mesh>;
+
+    static auto Quad() -> std::unique_ptr<Mesh>;
+
+    static auto Sphere() -> std::unique_ptr<Mesh>;
 
     static auto FromOBJ(const char *filepath) -> std::unique_ptr<Mesh>;
 

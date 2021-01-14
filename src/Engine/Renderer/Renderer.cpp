@@ -18,30 +18,24 @@ void Renderer::BeginScene(const std::shared_ptr<PerspectiveCamera> &camera) {
 
 void Renderer::EndScene() {
     Scene &scene(s_Renderer->m_Scene);
-
+    Renderer::s_SceneCamera = scene.m_Camera;
     /// TODO: batching based on materials, etc...
     DrawPayload drawPayload{};
     DrawIndexedPayload drawIndexedPayload{};
 
-//    for (const auto* model : scene.m_ModelSet) {
-//        model->SetTransformUniformData(*scene.m_Camera, 2, 0);
-//    }
-//
-//    for (auto* material : scene.m_MaterialSet) {
-//        material->UpdateUniforms();
-//    }
-    if (scene.m_SkyboxMesh) {
-        const Material* skyboxMaterial = scene.m_SkyboxMesh->GetMaterial();
-        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindMaterial(skyboxMaterial));
-        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindMeshInstance(scene.m_SkyboxMesh));
 
-        const auto* mesh = scene.m_SkyboxMesh->GetMesh();
-        drawPayload.vertexCount = mesh->VertexCount();
-        drawPayload.firstVertex = 0;
-        drawPayload.firstInstance = 0;
-        drawPayload.instanceCount = 1;
-        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::Draw(drawPayload));
-    }
+//    if (scene.m_SkyboxMesh) {
+//        const Material* skyboxMaterial = scene.m_SkyboxMesh->GetMaterial();
+//        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindMaterial(skyboxMaterial));
+//        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindMeshInstance(scene.m_SkyboxMesh));
+//
+//        const auto* mesh = scene.m_SkyboxMesh->GetMesh();
+//        drawPayload.vertexCount = mesh->VertexCount();
+//        drawPayload.firstVertex = 0;
+//        drawPayload.firstInstance = 0;
+//        drawPayload.instanceCount = 1;
+//        s_Renderer->m_CmdQueue.AddCommand(RenderCommand::Draw(drawPayload));
+//    }
 
     for (const auto&[material, batch] : scene.m_MaterialBatches) {
         s_Renderer->m_CmdQueue.AddCommand(RenderCommand::BindMaterial(material));
@@ -108,3 +102,9 @@ void Renderer::Init() {
 
 
 std::unique_ptr<Renderer> Renderer::s_Renderer;
+
+const TextureCubemap* Renderer::s_Skybox = nullptr;
+std::shared_ptr<PerspectiveCamera> Renderer::s_SceneCamera;
+float Renderer::s_Exposure = 1.0f;
+float Renderer::s_SkyboxLOD = 0.0f;
+bool Renderer::s_SkyboxEnabled = true;

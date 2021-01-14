@@ -32,9 +32,9 @@ protected:
             m_View(view),
             m_Position(position),
             m_Direction(glm::normalize(direction)),
-            m_Up(0.0f, 0.0f, 1.0f),
+            m_Up(0.0f, 1.0f, 0.0f),
             m_Right(glm::normalize(glm::cross(m_Direction, m_Up))),
-            m_Yaw(std::atan2(m_Direction.y, m_Direction.x)) {
+            m_Yaw(std::atan2(m_Direction.z, m_Direction.x)) {
         
 //        m_Projection[1][1] *= -1;
     };
@@ -42,8 +42,8 @@ protected:
     void CalculateDirection() {
         SetDirection(glm::vec3(
                 std::cos(m_Yaw) * std::cos(m_Pitch),
-                std::sin(m_Yaw) * std::cos(m_Pitch),
-                std::sin(m_Pitch)
+                std::sin(m_Pitch),
+                std::sin(m_Yaw) * std::cos(m_Pitch)
         ));
     }
 
@@ -80,7 +80,7 @@ public:
     auto GetDirection() -> const glm::vec3& { return m_Direction; }
 
     void ChangeYawPitch(float yawDelta, float pitchDelta) {
-        m_Yaw += yawDelta;
+        m_Yaw -= yawDelta;
         m_Pitch = CLAMP(-HALF_PI_F + 0.01f, m_Pitch + pitchDelta, HALF_PI_F - 0.01f);
         CalculateDirection();
     }
@@ -122,7 +122,7 @@ public:
                     glm::perspective(fov, aspectRatio, near, far),
                     glm::lookAt(position,
                                  direction,
-                                glm::vec3(0.0f, 0.0f, 1.0f)),
+                                glm::vec3(0.0f, 1.0f, 0.0f)),
                     position,
                     direction
             ),

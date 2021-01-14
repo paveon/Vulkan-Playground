@@ -6,8 +6,40 @@
 #include <Engine/Renderer/vulkan_wrappers.h>
 #include <unordered_map>
 #include "UniformBufferVk.h"
+#include "RenderPassVk.h"
 
 class GfxContextVk;
+
+
+struct PushConstantKey {
+    uint64_t value = 0;
+
+    PushConstantKey() = default;
+
+    explicit PushConstantKey(uint64_t value) : value(value) {}
+
+    PushConstantKey(VkShaderStageFlags stages, uint32_t index) : value(((uint64_t)stages << 32ul) + index) {}
+
+    auto Stage() const { return (value & 0xFFFFFFFF00000000u) >> 32u; }
+
+    auto Index() const { return value & 0x00000000FFFFFFFFu; }
+
+    auto operator()() const -> std::size_t { return value; }
+
+    auto operator==(const PushConstantKey &other) const -> bool { return value == other.value; }
+
+    auto operator<(const PushConstantKey &other) const -> bool { return value < other.value; }
+};
+
+
+namespace std {
+    template<>
+    struct hash<PushConstantKey> {
+        auto operator()(const PushConstantKey &k) const -> std::size_t { return std::hash<uint64_t>()(k.value); }
+    };
+}
+
+
 
 class ShaderPipelineVk : public ShaderPipeline {
     GfxContextVk &m_Context;
@@ -26,7 +58,7 @@ class ShaderPipelineVk : public ShaderPipeline {
 
     VkPipelineInputAssemblyStateCreateInfo m_InputAssembly = {};
     VkPipelineRasterizationStateCreateInfo m_Rasterizer = {};
-    VkPipelineColorBlendAttachmentState m_BlendAttachmentState = {};
+    std::vector<VkPipelineColorBlendAttachmentState> m_BlendStates = {};
     VkPipelineColorBlendStateCreateInfo m_ColorBlendState = {};
     VkPipelineDepthStencilStateCreateInfo m_DepthStencil = {};
     VkPipelineViewportStateCreateInfo m_ViewportState = {};
@@ -54,17 +86,25 @@ class ShaderPipelineVk : public ShaderPipeline {
     uint32_t m_SubpassIndex = 0;
 
     /// ShaderPipeline combines descriptor sets from all shader modules
-    std::unordered_map<uint32_t, VkPushConstantRange> m_PushRanges;
+    std::unordered_map<PushConstantKey, VkPushConstantRange> m_PushRanges;
     std::map<ShaderType, vk::ShaderModule *> m_ShaderModules;
 
     auto createInfo() const -> std::vector<VkPipelineShaderStageCreateInfo>;
 
+    auto BindImageViews(const std::vector<VkImageView> &textures,
+                        BindingKey bindingKey,
+                        SamplerBinding::Type type) -> std::vector<uint32_t>;
+
 public:
     ShaderPipelineVk(std::string name,
-                     const std::vector<std::pair<const char *, ShaderType>> &shaders,
-                     const std::unordered_set<BindingKey> &perObjectUniforms, const RenderPass &renderPass,
-                     uint32_t subpassIndex, std::pair<VkCullModeFlags, VkFrontFace> culling,
-                     DepthState depthState);
+                     const std::map<ShaderType, const char *> &shaders,
+                     const std::unordered_set<BindingKey> &perObjectUniforms,
+                     const RenderPassVk &renderPass,
+                     uint32_t subpassIndex,
+                     VkPrimitiveTopology topology,
+                     std::pair<VkCullModeFlags, VkFrontFace> culling,
+                     DepthState depthState,
+                     MultisampleState msState);
 
     auto VertexBindings() const -> const auto & {
         static std::vector<vk::ShaderModule::VertexBinding> emptyBindings;
@@ -82,21 +122,29 @@ public:
 
     void AllocateResources() override;
 
-    void Bind(VkCommandBuffer cmdBuffer, uint32_t imageIndex, std::optional<uint32_t> materialID);
+    void Bind(VkCommandBuffer cmdBuffer);
 
-    auto BindTextures(const std::vector<const Texture2D *> &textures,
+    void BindDescriptorSets(uint32_t imageIndex, std::optional<uint32_t> materialID);
+
+    auto BindTextures2D(const std::vector<const Texture2D *> &textures,
+                        BindingKey bindingKey) -> std::vector<uint32_t> override;
+
+    auto BindCubemaps(const std::vector<const TextureCubemap *> &cubemaps,
                       BindingKey bindingKey) -> std::vector<uint32_t> override;
 
-    auto BindTextures(const std::vector<VkImageView> &textures,
-                      BindingKey bindingKey) -> std::vector<uint32_t>;
+    auto BindTextures2D(const std::vector<VkImageView> &textures, BindingKey bindingKey) -> std::vector<uint32_t> {
+        return BindImageViews(textures, bindingKey, SamplerBinding::Type::SAMPLER_2D);
+    }
 
-    auto BindCubemap(const TextureCubemap* texture, BindingKey bindingKey) -> uint32_t override;
+    auto BindCubemaps(const std::vector<VkImageView> &cubemaps, BindingKey bindingKey) -> std::vector<uint32_t> {
+        return BindImageViews(cubemaps, bindingKey, SamplerBinding::Type::SAMPLER_CUBE);
+    }
 
     void BindUniformBuffer(const UniformBuffer *buffer, BindingKey bindingKey) override;
 
     template<typename T>
-    void PushConstants(VkCommandBuffer cmdBuffer, uint32_t index, const T& data) const {
-        auto it = m_PushRanges.find(index);
+    void PushConstants(VkCommandBuffer cmdBuffer, PushConstantKey key, const T &data) const {
+        auto it = m_PushRanges.find(key);
         if (it == m_PushRanges.end()) {
             /// TODO: warning instead?
             return;
@@ -105,11 +153,11 @@ public:
 //            throw std::runtime_error(msg.str().c_str());
         }
 
-        const auto& range = it->second;
+        const auto &range = it->second;
         if (range.size != sizeof(T)) {
             std::ostringstream msg;
-            msg << "[ShaderPipelineVk::PushConstants] Push constant(" << index << ") expects " << range.size
-            << " bytes. Got " << sizeof(T) << " bytes instead";
+            msg << "[ShaderPipelineVk::PushConstants] Push constant(" << key.Index() << ") expects " << range.size
+                << " bytes. Got " << sizeof(T) << " bytes instead";
             throw std::runtime_error(msg.str().c_str());
         }
         vkCmdPushConstants(cmdBuffer, m_PipelineLayout->data(), range.stageFlags, range.offset, range.size, &data);

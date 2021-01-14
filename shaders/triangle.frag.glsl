@@ -47,6 +47,7 @@ layout(std430, set=1, binding=0) uniform MaterialData {
     int diffuseTexIdx;
     int specularTexIdx;
     int emissionTexIdx;
+    int normalMapTexIdx;
 } materialUBO;
 
 layout(std430, set=2, binding=0) uniform ObjectData {

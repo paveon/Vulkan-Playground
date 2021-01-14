@@ -123,6 +123,7 @@ namespace vk {
         VkPhysicalDeviceFeatures deviceFeatures = {};
         deviceFeatures.samplerAnisotropy = VK_TRUE;
         deviceFeatures.sampleRateShading = VK_TRUE;
+        deviceFeatures.geometryShader = VK_TRUE;
 
         VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
         physicalDeviceDescriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
@@ -285,10 +286,12 @@ namespace vk {
                                  const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
                                  std::vector<VertexBinding> &output) {
 
-        output.emplace_back();
-        output.back().binding = 0;  /// TODO: maybe later support multiple bindings if we use per_instance input rate?
-        output.back().inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        auto &vertexLayout = output.back().vertexLayout;
+        VertexBinding binding{
+                {},
+                0,    /// TODO: maybe later support multiple bindings if we use per_instance input rate?
+                VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+        auto &vertexLayout = binding.vertexLayout;
 
         for (const auto &resource : resources) {
             const auto &base_type = compiler.get_type(resource.base_type_id);
@@ -299,6 +302,10 @@ namespace vk {
             VertexAttribute attribute{resource.name, vkFormat, size};
             vertexLayout[location] = attribute;
             std::cout << "[ShaderModule (" << m_Filepath << ")] Shader input: " << resource.name << std::endl;
+        }
+
+        if (!vertexLayout.empty()) {
+            output.push_back(binding);
         }
     }
 
@@ -336,6 +343,7 @@ namespace vk {
                     resource.name,
                     size,
                     1,
+                    false,
                     std::move(members)
             });
 
@@ -358,17 +366,36 @@ namespace vk {
         /// Extract sampled images
         for (auto &resource : resources.sampled_images) {
             SamplerBinding binding{};
-
+            binding.name = resource.name;
             const auto &type = glsl.get_type(resource.type_id);
             if (type.array.empty()) {
                 binding.count = 1;
             } else {
                 binding.count = type.pointer ? 0 : type.array[0];
+                binding.array = true;
+            }
+
+            switch (type.image.dim) {
+                case spv::Dim::Dim1D:
+                    binding.type = SamplerBinding::Type::SAMPLER_1D;
+                    break;
+                case spv::Dim::Dim2D:
+                    binding.type = SamplerBinding::Type::SAMPLER_2D;
+                    break;
+                case spv::Dim::Dim3D:
+                    binding.type = SamplerBinding::Type::SAMPLER_3D;
+                    break;
+                case spv::Dim::DimCube:
+                    binding.type = SamplerBinding::Type::SAMPLER_CUBE;
+                    break;
+                default:
+                    throw std::runtime_error("[ShaderModule] Unsupported sampler dimension type");
+                    break;
             }
 
             switch (type.basetype) {
                 case spirv_cross::SPIRType::BaseType::SampledImage:
-                    binding.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+//                    binding.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                     break;
 
                 default:
@@ -396,158 +423,37 @@ namespace vk {
     }
 
 
-    void Image::ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout) {
-        VkImageMemoryBarrier barrier = {};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.oldLayout = m_CurrentLayout;
-        barrier.newLayout = newLayout;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = m_Image;
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = m_Info.mipLevels;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = m_Info.arrayLayers;
+    void Image::ChangeLayout(const CommandBuffer &cmdBuffer,
+                             VkImageLayout srcLayout,
+                             VkImageLayout dstLayout,
+                             VkPipelineStageFlags srcStages,
+                             VkPipelineStageFlags dstStages,
+                             VkAccessFlags srcMask,
+                             VkAccessFlags dstMask,
+                             const std::vector<VkImageSubresourceRange> &subresources) {
 
-        VkPipelineStageFlags destinationStage;
-        switch (m_CurrentLayout) {
-            case VK_IMAGE_LAYOUT_UNDEFINED:
-                barrier.srcAccessMask = 0;
-                switch (newLayout) {
-                    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-                        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                        m_CurrentStage = VK_PIPELINE_STAGE_HOST_BIT;
-                        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                        break;
-
-                    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-                        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                        if (hasStencilComponent(m_Info.format))
-                            barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-                        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                                                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-                        break;
-
-                    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-                        barrier.dstAccessMask =
-                                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                        destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                        break;
-
-                    default:
-                        throw std::invalid_argument("unsupported layout transition!");
-                        break;
-                }
-                break;
-
-            case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-                if (newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                    //barrier.srcQueueFamilyIndex = DeviceQueueIndices[QUEUE_TRANSFER];
-                    //barrier.dstQueueFamilyIndex = DeviceQueueIndices[QUEUE_GRAPHICS];
-
-                    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
-                    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
-
-                    //barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                    //barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-                    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-                    //destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                } else {
-                    throw std::invalid_argument("unsupported layout transition!");
-                }
-                break;
-
-            default:
-                throw std::invalid_argument("unsupported layout transition!");
-                break;
+        std::vector<VkImageMemoryBarrier> barriers;
+        if (subresources.empty()) {
+            barriers.push_back(GetBaseBarrier(srcLayout, dstLayout, srcMask, dstMask));
+            barriers[0].subresourceRange.baseMipLevel = 0;
+            barriers[0].subresourceRange.levelCount = m_Info.mipLevels;
+            barriers[0].subresourceRange.baseArrayLayer = 0;
+            barriers[0].subresourceRange.layerCount = m_Info.arrayLayers;
+        } else {
+            barriers = std::vector<VkImageMemoryBarrier>(
+                    subresources.size(),
+                    GetBaseBarrier(srcLayout, dstLayout, srcMask, dstMask)
+            );
+            for (size_t i = 0; i < subresources.size(); i++) {
+                barriers[i].subresourceRange = subresources[i];
+            }
         }
 
-        vkCmdPipelineBarrier(cmdBuffer.data(), m_CurrentStage, destinationStage, 0,
+        vkCmdPipelineBarrier(cmdBuffer.data(), srcStages, dstStages, 0,
                              0, nullptr,
                              0, nullptr,
-                             1, &barrier
+                             barriers.size(), barriers.data()
         );
-
-        m_CurrentLayout = newLayout;
-        m_CurrentStage = destinationStage;
-    }
-
-
-    void Image::ChangeLayout(const CommandBuffer &cmdBuffer, VkImageLayout newLayout, VkPipelineStageFlags dstStage,
-                             VkImageAspectFlags aspectFlags) {
-        /// TODO: this needs to be rewritten. I misunderstood some key aspects
-        /// about memory synchronization when I started writing this.
-        /// Resource to use: http://themaister.net/blog/2019/08/14/yet-another-blog-explaining-vulkan-synchronization/
-        VkImageMemoryBarrier barrier = s_BaseBarrier;
-        barrier.oldLayout = m_CurrentLayout;
-        barrier.newLayout = newLayout;
-        barrier.image = m_Image;
-        barrier.subresourceRange.aspectMask = aspectFlags;
-        barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = m_Info.mipLevels;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = m_Info.arrayLayers;
-
-        switch (m_CurrentLayout) {
-            case VK_IMAGE_LAYOUT_UNDEFINED:
-                barrier.srcAccessMask = 0;
-                switch (newLayout) {
-                    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-                        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                        m_CurrentStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                        break;
-
-                    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-                        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                        if (hasStencilComponent(m_Info.format))
-                            barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-                        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                                                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                        break;
-
-                    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-                        barrier.dstAccessMask =
-                                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                        break;
-
-                    default:
-                        throw std::invalid_argument("unsupported layout transition!");
-                        break;
-                }
-                break;
-
-            case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-                if (newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
-                    if (dstStage == VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT) {
-                        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                    } else {
-                        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
-                    }
-                } else {
-                    throw std::invalid_argument("unsupported layout transition!");
-                }
-                break;
-
-            default:
-                throw std::invalid_argument("unsupported layout transition!");
-                break;
-        }
-
-        vkCmdPipelineBarrier(cmdBuffer.data(), m_CurrentStage, dstStage, 0,
-                             0, nullptr,
-                             0, nullptr,
-                             1, &barrier
-        );
-
-        m_CurrentLayout = newLayout;
-        m_CurrentStage = dstStage;
     }
 
 
@@ -558,10 +464,6 @@ namespace vk {
             throw std::runtime_error("texture image format does not support linear blitting!");
         }
 
-        if (m_CurrentLayout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-            throw std::runtime_error(
-                    "image must be in 'VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL' layout when generating mipmaps!");
-
         VkImageMemoryBarrier barrier = {};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier.image = m_Image;
@@ -571,23 +473,29 @@ namespace vk {
         barrier.subresourceRange.layerCount = 1;
         barrier.subresourceRange.levelCount = 1;
 
-        int32_t mipWidth = m_Info.extent.width;
-        int32_t mipHeight = m_Info.extent.height;
         for (uint32_t layer = 0; layer < m_Info.arrayLayers; layer++) {
             barrier.subresourceRange.baseArrayLayer = layer;
+            int32_t mipWidth = m_Info.extent.width;
+            int32_t mipHeight = m_Info.extent.height;
 
             for (uint32_t mipLevel = 1; mipLevel < m_Info.mipLevels; mipLevel++) {
-                barrier.subresourceRange.baseMipLevel = mipLevel - 1;
-                barrier.oldLayout = m_CurrentLayout;
-                barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                if (mipLevel > 1) {
+                    /// Wait for previous level to be filled with blit command,
+                    /// base level 0 must be prepared externally before calling this function
+                    barrier.subresourceRange.baseMipLevel = mipLevel - 1;
+                    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-                vkCmdPipelineBarrier(cmdBuffer.data(), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                     0,
-                                     0, nullptr,
-                                     0, nullptr,
-                                     1, &barrier);
+                    vkCmdPipelineBarrier(cmdBuffer.data(),
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         0,
+                                         0, nullptr,
+                                         0, nullptr,
+                                         1, &barrier);
+                }
 
                 VkImageBlit blit = {};
                 blit.srcOffsets[0] = {0, 0, 0};
@@ -634,8 +542,6 @@ namespace vk {
                              0, nullptr,
                              0, nullptr,
                              barriers.size(), barriers.data());
-
-        m_CurrentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
 
@@ -728,7 +634,9 @@ namespace vk {
         if (vkCreateInstance(&createInfo, nullptr, &m_Instance) != VK_SUCCESS)
             throw std::runtime_error("Vulkan instance could not be created!");
 
-        setupDebugMessenger();
+        if (enableValidation) {
+            setupDebugMessenger();
+        }
     }
 
 
@@ -756,21 +664,44 @@ namespace vk {
     DeviceMemory::DeviceMemory(VkPhysicalDevice physDevice,
                                VkDevice device,
                                const std::vector<const Image *> &images,
+                               std::optional<VkDeviceSize> sizeOverride,
                                VkMemoryPropertyFlags flags) : m_Device(device) {
 
         uint32_t resultTypeBits = ~(0U);
-        uint32_t totalSize = 0;
+        VkDeviceSize totalSize = 0;
         for (const auto *image : images) {
             resultTypeBits &= image->MemoryInfo().memoryTypeBits;
             totalSize += roundUp(image->MemoryInfo().size, image->MemoryInfo().alignment);
         }
 
+        if (sizeOverride.has_value()) {
+            totalSize = std::max(totalSize, sizeOverride.value());
+        }
+
         Allocate(findMemoryType(physDevice, resultTypeBits, flags), totalSize);
     }
 
+
+    DeviceMemory::DeviceMemory(VkPhysicalDevice physDevice,
+                               VkDevice device,
+                               const std::vector<const Buffer *> &buffers,
+                               VkMemoryPropertyFlags flags) : m_Device(device) {
+
+        uint32_t resultTypeBits = ~(0U);
+        uint32_t totalSize = 0;
+        for (const auto *buffer : buffers) {
+            const auto &info = buffer->MemoryInfo();
+            resultTypeBits &= info.memoryTypeBits;
+            totalSize += roundUp(info.size, info.alignment);
+        }
+
+        Allocate(findMemoryType(physDevice, resultTypeBits, flags), totalSize);
+    }
+
+
     DescriptorSetLayout::DescriptorSetLayout(VkDevice device,
                                              const std::vector<VkDescriptorSetLayoutBinding> &bindings)
-                                             : m_Device(device) {
+            : m_Device(device) {
 
         std::vector<VkDescriptorBindingFlagsEXT> bindingFlags(bindings.size());
         for (size_t i = 0; i < bindings.size(); i++) {
@@ -791,5 +722,32 @@ namespace vk {
 
         if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_Layout) != VK_SUCCESS)
             throw std::runtime_error("failed to create descriptor set layout!");
+    }
+
+
+    Sampler::Sampler(VkDevice device, float maxLod) : m_Device(device) {
+        VkSamplerCreateInfo samplerInfo = {
+                VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                nullptr,
+                0,
+                VK_FILTER_LINEAR,
+                VK_FILTER_LINEAR,
+                VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                0,
+                VK_TRUE,
+                16,
+                VK_FALSE,
+                VK_COMPARE_OP_ALWAYS,
+                0.0f,
+                maxLod,
+                VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+                VK_FALSE
+        };
+
+        if (vkCreateSampler(m_Device, &samplerInfo, nullptr, &m_Sampler) != VK_SUCCESS)
+            throw std::runtime_error("failed to create texture sampler!");
     }
 }

@@ -9,18 +9,32 @@
 #include <set>
 #include <Engine/Application.h>
 #include <Engine/Renderer/Material.h>
+#include <Engine/Renderer/Camera.h>
+#include <backends/imgui_impl_vulkan.h>
+#include <Engine/Core.h>
 
 #include "RendererVk.h"
 #include "ShaderPipelineVk.h"
 #include "RenderPassVk.h"
-#include <backends/imgui_impl_vulkan.h>
-#include <Engine/Core.h>
 
 
-const std::vector<std::pair<const char *, ShaderType>> RendererVk::POST_PROCESS_SHADERS{
-        {POST_PROCESS_VS_PATH, ShaderType::VERTEX_SHADER},
-        {POST_PROCESS_FS_PATH, ShaderType::FRAGMENT_SHADER}
+const std::map<ShaderType, const char *> RendererVk::POST_PROCESS_SHADERS{
+        {ShaderType::VERTEX_SHADER,   BASE_DIR "/shaders/fullscreenQuad.vert.spv"},
+        {ShaderType::FRAGMENT_SHADER, BASE_DIR "/shaders/postprocess.frag.spv"}
 };
+
+const std::map<ShaderType, const char *> RendererVk::NORMALDEBUG_SHADERS{
+        {ShaderType::VERTEX_SHADER,   BASE_DIR "/shaders/normaldebug.vert.spv"},
+        {ShaderType::GEOMETRY_SHADER, BASE_DIR "/shaders/normaldebug.geom.spv"},
+        {ShaderType::FRAGMENT_SHADER, BASE_DIR "/shaders/normaldebug.frag.spv"}
+};
+
+const std::map<ShaderType, const char *> RendererVk::SKYBOX_SHADERS{
+        {ShaderType::VERTEX_SHADER,   BASE_DIR "/shaders/skybox.vert.spv"},
+        {ShaderType::FRAGMENT_SHADER, BASE_DIR "/shaders/skybox.frag.spv"}
+};
+
+uint32_t RendererVk::s_SkyboxTexIdx = 0;
 
 
 RendererVk::RendererVk() :
@@ -31,14 +45,48 @@ RendererVk::RendererVk() :
                            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
         m_UniformBuffer(&m_Device, 10'000'000) {
 
+
+    VkPhysicalDeviceMemoryProperties memProperties;
+    VkMemoryHeap *heaps = memProperties.memoryHeaps;
+    vkGetPhysicalDeviceMemoryProperties(m_Device, &memProperties);
+
+    std::vector<std::pair<uint32_t, VkMemoryType>> deviceLocalTypes;
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        VkMemoryPropertyFlags flags = memProperties.memoryTypes[i].propertyFlags;
+        if ((flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+            deviceLocalTypes.emplace_back(i, memProperties.memoryTypes[i]);
+        }
+    }
+
+    std::sort(deviceLocalTypes.begin(), deviceLocalTypes.end(), [heaps](const auto &x, const auto &y) {
+        return heaps[x.second.heapIndex].size > heaps[y.second.heapIndex].size;
+    });
+
+    assert(!deviceLocalTypes.empty());
+
+    uint32_t memoryTypeIndex = deviceLocalTypes[0].first;
+    m_MemoryIndices[vk::DeviceMemory::UsageType::DEVICE_LOCAL_LARGE] = memoryTypeIndex;
+
+    VkDeviceSize memorySize = 512'000'000;
+    m_ImageMemory = vk::DeviceMemory(m_Device, memoryTypeIndex, memorySize);
+
     vk::Swapchain &swapchain(m_Context.Swapchain());
     const auto &swapchainViews = swapchain.ImageViews();
     auto extent = swapchain.Extent();
-    auto imgFormat = swapchain.ImageFormat();
     auto maxImgCount = swapchain.Capabilities().maxImageCount;
 
+    m_SwapchainImageCount = swapchainViews.size();
     m_RenderPass = std::make_unique<RenderPassVk>(true);
-    m_RenderPass2 = std::make_unique<RenderPassVk>(false);
+    m_PostprocessRenderPass = std::make_unique<RenderPassVk>(false);
+
+//    VkClearColorValue clearColorValue{{0.0f, 0.0f, 0.0f, 1.0f}};
+
+    VkClearValue clearValue;
+    clearValue.depthStencil = {1.0f, 0};
+    m_RenderPass->SetClearValue(1, clearValue);
+
+    MultisampleState msState{};
+    msState.sampleCount = VK_SAMPLE_COUNT_1_BIT;
 
     DepthState depthState{};
     depthState.testEnable = VK_FALSE;
@@ -47,177 +95,196 @@ RendererVk::RendererVk() :
     depthState.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     depthState.min = 0.0f;
     depthState.max = 1.0f;
-    m_PostprocessPipeline = std::make_unique<ShaderPipelineVk>(std::string("Post Process Pipeline"),
-                                                               POST_PROCESS_SHADERS,
-                                                               std::unordered_set<BindingKey>{},
-                                                               *m_RenderPass2,
-                                                               0,
-                                                               std::make_pair(VK_CULL_MODE_NONE,
-                                                                              VK_FRONT_FACE_COUNTER_CLOCKWISE),
-                                                               depthState);
+    m_PostprocessPipeline = std::make_unique<ShaderPipelineVk>(
+            std::string("Post Process Pipeline"),
+            POST_PROCESS_SHADERS,
+            std::unordered_set<BindingKey>{},
+            *m_PostprocessRenderPass,
+            0,
+            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            std::make_pair(VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE),
+            depthState,
+            msState);
+
+    depthState.testEnable = VK_TRUE;
+    depthState.writeEnable = VK_TRUE;
+    depthState.compareOp = VK_COMPARE_OP_LESS;
+    msState.sampleCount = m_Device.maxSamples();
+    msState.sampleShadingEnable = VK_TRUE;
+    msState.minSampleShading = 0.2f;
+    m_NormalDebugPipeline = std::make_unique<ShaderPipelineVk>(
+            "Normal Debug Pipeline",
+            NORMALDEBUG_SHADERS,
+            std::unordered_set<BindingKey>{{0, 0}},
+            *m_RenderPass,
+            0,
+            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            std::make_pair(VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE),
+            depthState,
+            msState);
 
 
-    m_GfxCmdPool = m_Device.createCommandPool(m_Device.queueIndex(QueueFamily::GRAPHICS),
+    depthState.testEnable = VK_FALSE;
+    depthState.writeEnable = VK_FALSE;
+    depthState.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    m_SkyboxPipeline = std::make_unique<ShaderPipelineVk>(
+            "SkyboxShader",
+            SKYBOX_SHADERS,
+            std::unordered_set<BindingKey>{},
+            *m_RenderPass,
+            0,
+            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            std::make_pair(VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE),
+            depthState,
+            msState);
+
+
+    m_GfxCmdPool = m_Device.createCommandPool(m_Device.GfxQueueIdx(),
                                               VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-    m_TransferCmdPool = m_Device.createCommandPool(m_Device.queueIndex(QueueFamily::TRANSFER),
+    m_TransferCmdPool = m_Device.createCommandPool(m_Device.TransferQueueIdx(),
                                                    VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
-    m_GfxCmdBuffers = m_Device.createCommandBuffers(*m_GfxCmdPool, maxImgCount);
-    m_TransferCmdBuffers = m_Device.createCommandBuffers(*m_TransferCmdPool, maxImgCount);
+    m_GfxCmdBuffers = vk::CommandBuffers(m_Device, m_GfxCmdPool->data(),
+                                         VK_COMMAND_BUFFER_LEVEL_PRIMARY, maxImgCount);
+    m_TransferCmdBuffers = vk::CommandBuffers(m_Device, m_TransferCmdPool->data(),
+                                              VK_COMMAND_BUFFER_LEVEL_PRIMARY, maxImgCount);
 
-    std::set<uint32_t> queueIndices{
-            m_Device.queueIndex(QueueFamily::TRANSFER),
-            m_Device.queueIndex(QueueFamily::GRAPHICS),
-    };
+    CreateImageResources(swapchain);
 
-    m_ColorImages.emplace_back(m_Device, std::set<uint32_t>{m_Device.GfxQueueIdx()},
-                               extent, 1,
-                                                     VK_SAMPLE_COUNT_1_BIT,
-                                                     imgFormat,
-                                                     VK_IMAGE_TILING_OPTIMAL,
-                                                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                                                     VK_IMAGE_USAGE_SAMPLED_BIT);
-    m_ColorImages.emplace_back(m_Device, std::set<uint32_t>{m_Device.GfxQueueIdx()},
-                               extent, 1,
-                               VK_SAMPLE_COUNT_1_BIT,
-                               imgFormat,
-                               VK_IMAGE_TILING_OPTIMAL,
-                               VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                               VK_IMAGE_USAGE_SAMPLED_BIT);
-    m_ColorImages.emplace_back(m_Device, std::set<uint32_t>{m_Device.GfxQueueIdx()},
-                               extent, 1,
-                               VK_SAMPLE_COUNT_1_BIT,
-                               imgFormat,
-                               VK_IMAGE_TILING_OPTIMAL,
-                               VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                               VK_IMAGE_USAGE_SAMPLED_BIT);
+    CreateSynchronizationPrimitives();
 
-    m_ColorImage = m_Device.createImage(
-            {m_Device.GfxQueueIdx()},
-            extent, 1,
-            Device::maxSamples(),
-            imgFormat, VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    // Store cube vertices in host visible memory
+    VkMemoryPropertyFlags memoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-    m_DepthImage = m_Device.createImage(
-            {m_Device.queueIndex(QueueFamily::GRAPHICS)},
-            extent, 1,
-            Device::maxSamples(),
-            m_Device.findDepthFormat(), VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    VkDeviceSize dataSize = sizeof(glm::vec3) * Mesh::s_CubeVertexPositions.size();
+    m_BasicCubeVBO = std::make_unique<vk::Buffer>(m_Device,
+                                                  std::set<uint32_t>{m_Device.GfxQueueIdx()},
+                                                  dataSize,
+                                                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-    std::vector<const vk::Image*> images{
-        m_ColorImage,
-        m_DepthImage,
-        &m_ColorImages[0],
-        &m_ColorImages[1],
-        &m_ColorImages[2],
-    };
+    m_BasicCubeMemory = std::make_unique<vk::DeviceMemory>(m_Device, m_Device,
+                                                           std::vector<const vk::Buffer *>{m_BasicCubeVBO.get()},
+                                                           memoryFlags);
+    m_BasicCubeVBO->BindMemory(m_BasicCubeMemory->data(), 0);
+    m_BasicCubeMemory->MapMemory(0, dataSize);
+    std::memcpy(m_BasicCubeMemory->m_Mapped, Mesh::s_CubeVertexPositions.data(), dataSize);
+    m_BasicCubeMemory->UnmapMemory();
 
-    m_ImageMemory = m_Device.allocateImageMemory(images, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    auto offset = roundUp(m_ColorImage->MemoryInfo().size, m_DepthImage->MemoryInfo().alignment);
-    m_ColorImage->BindMemory(m_ImageMemory->data(), 0);
-    m_DepthImage->BindMemory(m_ImageMemory->data(), offset);
-    offset = roundUp(offset + m_DepthImage->MemoryInfo().size, m_ColorImages[0].MemoryInfo().alignment);
-    m_ColorImages[0].BindMemory(m_ImageMemory->data(), offset);
-    offset = roundUp(offset + m_ColorImages[0].MemoryInfo().size, m_ColorImages[1].MemoryInfo().alignment);
-    m_ColorImages[1].BindMemory(m_ImageMemory->data(), offset);
-    offset = roundUp(offset + m_ColorImages[1].MemoryInfo().size, m_ColorImages[2].MemoryInfo().alignment);
-    m_ColorImages[2].BindMemory(m_ImageMemory->data(), offset);
-
-    m_ColorImageView = m_Device.createImageView(*m_ColorImage, VK_IMAGE_ASPECT_COLOR_BIT);
-    m_DepthImageView = m_Device.createImageView(*m_DepthImage, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    m_ColorViews.emplace_back(m_Device, m_ColorImages[0], VK_IMAGE_ASPECT_COLOR_BIT);
-    m_ColorViews.emplace_back(m_Device, m_ColorImages[1], VK_IMAGE_ASPECT_COLOR_BIT);
-    m_ColorViews.emplace_back(m_Device, m_ColorImages[2], VK_IMAGE_ASPECT_COLOR_BIT);
-
-    vk::CommandBuffer setupCmdBuffer = m_GfxCmdBuffers->get(0);
-    setupCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-    m_ColorImage->ChangeLayout(setupCmdBuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    m_DepthImage->ChangeLayout(setupCmdBuffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-
-    setupCmdBuffer.End();
-    setupCmdBuffer.Submit(m_Device.queue(QueueFamily::GRAPHICS));
-
-    vkQueueWaitIdle(m_Device.queue(QueueFamily::GRAPHICS));
-
-    std::vector<VkImageView> offscreenAttachments{nullptr, m_DepthImageView->data()};
-    if (Device::maxSamples() != VK_SAMPLE_COUNT_1_BIT) {
-        offscreenAttachments.push_back(m_ColorImageView->data());
-    }
-
-    std::vector<VkImageView> vkViews;
-    for (const vk::ImageView &view : m_ColorViews) {
-        offscreenAttachments.front() = view.data();
-        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass->VkHandle(), offscreenAttachments);
-        m_OffscreenFBOs.push_back(buffer);
-        vkViews.push_back(view.data());
-    }
-    m_PostprocessPipeline->BindTextures(vkViews, BindingKey(0, 0));
-
-
-    std::vector<VkImageView> attachments(1);
-    for (const vk::ImageView &swapchainView : swapchainViews) {
-        attachments[0] = swapchainView.data();
-        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass2->VkHandle(), attachments);
-        m_FBOs.push_back(buffer);
-    }
-
-    createSyncObjects();
-
+    m_Viewport.x = 0;
+    m_Viewport.y = static_cast<float>(extent.height);
     m_Viewport.width = static_cast<float>(extent.width);
-    m_Viewport.height = static_cast<float>(extent.height);
+    m_Viewport.height = -static_cast<float>(extent.height);
+    m_Viewport.minDepth = 0.0f;
     m_Viewport.maxDepth = 1.0f;
     m_Scissor.extent = extent;
-
-    m_ClearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-    m_ClearValues[1].depthStencil = {1.0f, 0};
 }
 
 
-void RendererVk::createSyncObjects() {
+void RendererVk::CreateImageResources(const vk::Swapchain &swapchain) {
+    m_FBOs.clear();
+
+    m_ColorImage = vk::Image(m_Device,
+                             {m_Device.GfxQueueIdx()},
+                             swapchain.Extent(), 1,
+                             VK_SAMPLE_COUNT_1_BIT,
+                             VK_FORMAT_R32G32B32A32_SFLOAT,
+                             VK_IMAGE_TILING_OPTIMAL,
+                             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                             VK_IMAGE_USAGE_SAMPLED_BIT);
+
+    m_MSColorImage = vk::Image(m_Device, {m_Device.GfxQueueIdx()},
+                               swapchain.Extent(), 1,
+                               m_Device.maxSamples(),
+                               VK_FORMAT_R32G32B32A32_SFLOAT,
+                               VK_IMAGE_TILING_OPTIMAL,
+                               VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                               VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+
+    m_DepthImage = vk::Image(m_Device,
+                             {m_Device.queueIndex(QueueFamily::GRAPHICS)},
+                             swapchain.Extent(), 1,
+                             m_Device.maxSamples(),
+                             m_Device.findDepthFormat(), VK_IMAGE_TILING_OPTIMAL,
+                             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+
+    m_MSColorImage.BindMemory(m_ImageMemory.data(), 0);
+
+    auto offset = roundUp(m_MSColorImage.MemoryInfo().size, m_DepthImage.MemoryInfo().alignment);
+    m_DepthImage.BindMemory(m_ImageMemory.data(), offset);
+
+    offset = roundUp(offset + m_DepthImage.MemoryInfo().size, m_ColorImage.MemoryInfo().alignment);
+    m_ColorImage.BindMemory(m_ImageMemory.data(), offset);
+
+    m_MSColorImageView = vk::ImageView(m_Device, m_MSColorImage, VK_IMAGE_ASPECT_COLOR_BIT);
+    m_ColorImageView = vk::ImageView(m_Device, m_ColorImage, VK_IMAGE_ASPECT_COLOR_BIT);
+    m_DepthImageView = vk::ImageView(m_Device, m_DepthImage, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    std::vector<VkImageView> offscreenAttachments{m_ColorImageView.data(), m_DepthImageView.data()};
+    if (m_Device.maxSamples() > VK_SAMPLE_COUNT_1_BIT) {
+        offscreenAttachments.push_back(m_MSColorImageView.data());
+    }
+    m_OffscreenFBO = vk::Framebuffer(m_Device, m_RenderPass->data(), swapchain.Extent(), offscreenAttachments);
+
+    for (const vk::ImageView &swapchainView : swapchain.ImageViews()) {
+        m_FBOs.emplace_back(m_Device, m_PostprocessRenderPass->data(), swapchain.Extent(),
+                            std::vector<VkImageView>{swapchainView.data()});
+    }
+
+    m_PostprocessPipeline->BindTextures2D({m_ColorImageView.data()}, BindingKey(0, 0));
+}
+
+
+void RendererVk::CreateSynchronizationPrimitives() {
+    m_AcquireSemaphores.clear();
+    m_ReleaseSemaphores.clear();
+    m_Fences.clear();
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        m_AcquireSemaphores.emplace_back(m_Device.createSemaphore());
-        m_ReleaseSemaphores.emplace_back(m_Device.createSemaphore());
-        m_Fences.emplace_back(m_Device.createFence(true));
+        m_AcquireSemaphores.emplace_back(m_Device);
+        m_ReleaseSemaphores.emplace_back(m_Device);
+        m_Fences.emplace_back(m_Device,true);
     }
 }
 
 
-//void RendererVk::RecreateSwapchain() {
-//    vkDeviceWaitIdle(m_Device);
-//
-//    m_Context.RecreateSwapchain();
-//    auto extent = m_Context.Swapchain().Extent();
-//
-//    m_RenderPass = RenderPass::Create();
-//
-//    // TODO: Image or depth format might possibly change with swapchain recreation
-//    std::vector<VkImageView> attachments{nullptr, m_DepthImageView->data()};
-//    if (Device::maxSamples() != VK_SAMPLE_COUNT_1_BIT) {
-//        attachments.push_back(m_ColorImageView->data());
-//    }
-//
-//    m_OffscreenFBOs.clear();
-//    for (const vk::ImageView &view : m_Context.Swapchain().ImageViews()) {
-//        attachments.front() = view.data();
-//        auto *buffer = m_Device.createFramebuffer(extent, (VkRenderPass) m_RenderPass->VkHandle(), attachments);
-//        m_Framebuffers.push_back(buffer);
-//    }
-//}
+void RendererVk::RecreateSwapchain() {
+    vkDeviceWaitIdle(m_Device);
+
+    m_Context.RecreateSwapchain();
+    const auto& swapchain = m_Context.Swapchain();
+    assert(swapchain.ImageCount() == m_SwapchainImageCount);
+//    uint32_t maxImgCount = swapchain.Capabilities().maxImageCount;
+
+    CreateImageResources(swapchain);
+
+//    CreateSynchronizationPrimitives();
+
+//    m_FrameIndex = 0;
+
+//    m_GfxCmdBuffers = vk::CommandBuffers(m_Device, m_GfxCmdPool->data(),
+//                                         VK_COMMAND_BUFFER_LEVEL_PRIMARY, maxImgCount);
+//    m_TransferCmdBuffers = vk::CommandBuffers(m_Device, m_TransferCmdPool->data(),
+//                                              VK_COMMAND_BUFFER_LEVEL_PRIMARY, maxImgCount);
+
+    VkExtent2D newExtent = swapchain.Extent();
+    m_Viewport.x = 0;
+    m_Viewport.y = static_cast<float>(newExtent.height);
+    m_Viewport.width = static_cast<float>(newExtent.width);
+    m_Viewport.height = -static_cast<float>(newExtent.height);
+    m_Viewport.minDepth = 0.0f;
+    m_Viewport.maxDepth = 1.0f;
+    m_Scissor.extent = newExtent;
+}
 
 
-auto RendererVk::AcquireNextImage() -> uint32_t {
+void RendererVk::AcquireNextImage() {
     auto &ctx = static_cast<GfxContextVk &>(m_Context);
     VkResult result = vkAcquireNextImageKHR(m_Device, ctx.Swapchain().data(), UINT64_MAX,
-                                            m_AcquireSemaphores[m_FrameIndex]->data(), nullptr,
+                                            m_AcquireSemaphores[m_FrameIndex].data(), nullptr,
                                             &m_ImageIndex);
 
-    vkWaitForFences(m_Device, 1, m_Fences[m_FrameIndex]->ptr(), VK_TRUE, UINT64_MAX);
-    vkResetFences(m_Device, 1, m_Fences[m_FrameIndex]->ptr());
+    vkWaitForFences(m_Device, 1, m_Fences[m_FrameIndex].ptr(), VK_TRUE, UINT64_MAX);
+    vkResetFences(m_Device, 1, m_Fences[m_FrameIndex].ptr());
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 //        std::cout << "OUT_OF_DATE" << std::endl;
@@ -225,47 +292,48 @@ auto RendererVk::AcquireNextImage() -> uint32_t {
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("failed to acquire next swapchain image!");
     }
-
-    return m_ImageIndex;
 }
 
 void RendererVk::DrawFrame() {
     static std::unordered_map<BindingKey, uint32_t> uniformObjectOffsets;
 
-    vk::CommandBuffer primaryCmdBuffer(m_GfxCmdBuffers->get(m_ImageIndex));
-
+    vk::CommandBuffer primaryCmdBuffer(m_GfxCmdBuffers[m_ImageIndex]);
     primaryCmdBuffer.Begin();
-    VkRenderPassBeginInfo renderPassBeginInfo = {};
-    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass->VkHandle();
-    renderPassBeginInfo.renderArea.offset = {0, 0};
-    renderPassBeginInfo.clearValueCount = m_ClearValues.size();
-    renderPassBeginInfo.pClearValues = m_ClearValues.data();
-    renderPassBeginInfo.renderArea.extent = m_Context.Swapchain().Extent();
-    renderPassBeginInfo.framebuffer = m_OffscreenFBOs[m_ImageIndex]->data();
 
-    // The primary command buffer does not contain any rendering commands
-    // These are stored (and retrieved) from the secondary command buffers
-//    vkCmdBeginRenderPass(primaryCmdBuffer.data(), &renderPassBeginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-    vkCmdBeginRenderPass(primaryCmdBuffer.data(), &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+    m_RenderPass->Begin(primaryCmdBuffer, m_OffscreenFBO);
     vkCmdSetViewport(primaryCmdBuffer.data(), 0, 1, &m_Viewport);
     vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
+
+    if (s_SkyboxEnabled && s_Skybox) {
+        glm::mat4 PV = s_SceneCamera->GetProjection() * glm::mat4(glm::mat3(s_SceneCamera->GetView()));
+
+        m_SkyboxPipeline->Bind(primaryCmdBuffer.data());
+        m_SkyboxPipeline->BindDescriptorSets(m_ImageIndex, {});
+        m_SkyboxPipeline->PushConstants(primaryCmdBuffer.data(), {VK_SHADER_STAGE_VERTEX_BIT, 0}, PV);
+        m_SkyboxPipeline->PushConstants(primaryCmdBuffer.data(), {VK_SHADER_STAGE_FRAGMENT_BIT, 1}, s_SkyboxTexIdx);
+        m_SkyboxPipeline->PushConstants(primaryCmdBuffer.data(), {VK_SHADER_STAGE_FRAGMENT_BIT, 2}, s_SkyboxLOD);
+
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(primaryCmdBuffer.data(), 0, 1, m_BasicCubeVBO->ptr(), &offset);
+        vkCmdDraw(primaryCmdBuffer.data(), Mesh::s_CubeVertexPositions.size(), 1, 0, 0);
+    }
 
     uniformObjectOffsets.clear();
     RenderCommand *cmd = nullptr;
     ShaderPipelineVk *boundPipeline = nullptr;
-    uint32_t boundMeshInstance = 0;
+    std::optional<uint32_t> materialID{};
+    std::optional<uint32_t> materialInstanceID{};
     while ((cmd = m_CmdQueue.GetNextCommand()) != nullptr) {
         switch (cmd->m_Type) {
             case RenderCommand::Type::SET_CLEAR_COLOR: {
                 auto clearColor = cmd->UnpackData<math::vec4>();
-                std::memcpy(m_ClearValues[0].color.float32, &clearColor, sizeof(math::vec4));
+//                std::memcpy(m_ClearValues[0].color.float32, &clearColor, sizeof(math::vec4));
                 break;
             }
             case RenderCommand::Type::SET_DEPTH_STENCIL: {
                 auto depthStencil = cmd->UnpackData<DepthStencil>();
-                std::memcpy(&m_ClearValues[1].depthStencil, &depthStencil, sizeof(DepthStencil));
+//                std::memcpy(&m_ClearValues[1].depthStencil, &depthStencil, sizeof(DepthStencil));
                 break;
             }
             case RenderCommand::Type::SET_VIEWPORT: {
@@ -290,8 +358,10 @@ void RendererVk::DrawFrame() {
 //            }
             case RenderCommand::Type::BIND_MATERIAL: {
                 auto *material = cmd->UnpackData<Material *>();
+                materialID = material->GetMaterialID();
                 boundPipeline = static_cast<ShaderPipelineVk *>(&material->GetPipeline());
-                boundPipeline->Bind(primaryCmdBuffer.data(), m_ImageIndex, material->GetMaterialID());
+                boundPipeline->Bind(primaryCmdBuffer.data());
+                boundPipeline->BindDescriptorSets(m_ImageIndex, materialID);
                 break;
             }
             case RenderCommand::Type::BIND_MESH: {
@@ -314,7 +384,7 @@ void RendererVk::DrawFrame() {
                                          VK_INDEX_TYPE_UINT32);
                 }
 
-                boundMeshInstance = meshInstance->GetMaterialInstance().InstanceID();
+                materialInstanceID = meshInstance->GetMaterialInstance().InstanceID();
 //                auto materialID = meshInstance->GetMaterial();
 //                boundPipeline->SetDynamicOffsets(instanceID);
 //                boundPipeline->SetDynamicOffsets(mesh->GetMaterialObjectIdx());
@@ -326,7 +396,7 @@ void RendererVk::DrawFrame() {
                 break;
             }
             case RenderCommand::Type::DRAW: {
-                boundPipeline->SetDynamicOffsets(boundMeshInstance, uniformObjectOffsets);
+                boundPipeline->SetDynamicOffsets(materialInstanceID.value(), uniformObjectOffsets);
                 auto payload = cmd->UnpackData<DrawPayload>();
                 vkCmdDraw(primaryCmdBuffer.data(),
                           payload.vertexCount,
@@ -336,7 +406,7 @@ void RendererVk::DrawFrame() {
                 break;
             }
             case RenderCommand::Type::DRAW_INDEXED: {
-                boundPipeline->SetDynamicOffsets(boundMeshInstance, uniformObjectOffsets);
+                boundPipeline->SetDynamicOffsets(materialInstanceID.value(), uniformObjectOffsets);
                 auto payload = cmd->UnpackData<DrawIndexedPayload>();
                 vkCmdDrawIndexed(primaryCmdBuffer.data(),
                                  payload.indexCount,
@@ -344,6 +414,18 @@ void RendererVk::DrawFrame() {
                                  payload.firstIndex,
                                  payload.vertexOffset,
                                  payload.firstInstance);
+
+//                m_NormalDebugPipeline->Bind(primaryCmdBuffer.data());
+//                boundPipeline->SetDynamicOffsets(materialInstanceID.value(), uniformObjectOffsets);
+//                vkCmdDrawIndexed(primaryCmdBuffer.data(),
+//                                 payload.indexCount,
+//                                 payload.instanceCount,
+//                                 payload.firstIndex,
+//                                 payload.vertexOffset,
+//                                 payload.firstInstance);
+//
+//                boundPipeline->Bind(primaryCmdBuffer.data());
+//                boundPipeline->BindDescriptorSets(m_ImageIndex, materialID);
                 break;
             }
 
@@ -352,55 +434,49 @@ void RendererVk::DrawFrame() {
                 break;
         }
     }
+    m_RenderPass->End(primaryCmdBuffer);
 
-//    if (m_ImGuiLayer) {
-//        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), primaryCmdBuffer.data());
-//    }
+
+    /// Post processing part (full screen quad render + GUI)
+    m_PostprocessRenderPass->Begin(primaryCmdBuffer, m_FBOs[m_ImageIndex]);
+
+    VkViewport vp{0, 0, m_Viewport.width, m_Viewport.y, 0.0f, 1.0f};
+    vkCmdSetViewport(primaryCmdBuffer.data(), 0, 1, &vp);
+    vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
+
+    m_PostprocessPipeline->Bind(primaryCmdBuffer.data());
+    m_PostprocessPipeline->BindDescriptorSets(m_ImageIndex, std::optional<uint32_t>());
+    m_PostprocessPipeline->PushConstants(primaryCmdBuffer.data(), {VK_SHADER_STAGE_FRAGMENT_BIT, 0}, s_Exposure);
+    vkCmdDraw(primaryCmdBuffer.data(), 3, 1, 0, 0);
+
+    if (m_ImGuiLayer) {
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), primaryCmdBuffer.data());
+    }
 //    /// ImGui fucks up viewport and scissor and doesn't restore it after the draw -_-
 //    /// TODO: write my own ImGuI renderer
 //    vkCmdSetViewport(primaryCmdBuffer.data(), 0, 1, &m_Viewport);
 //    vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
 
-//    vkCmdNextSubpass(primaryCmdBuffer.data(), VK_SUBPASS_CONTENTS_INLINE);
-
-    //    vkCmdExecuteCommands(primaryCmdBuffer.data(), submitBuffers.size(), submitBuffers.data());
-    vkCmdEndRenderPass(primaryCmdBuffer.data());
-
-    {
-        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassBeginInfo.renderPass = (VkRenderPass) m_RenderPass2->VkHandle();
-        renderPassBeginInfo.renderArea.offset = {0, 0};
-        renderPassBeginInfo.clearValueCount = m_ClearValues.size();
-        renderPassBeginInfo.pClearValues = m_ClearValues.data();
-        renderPassBeginInfo.renderArea.extent = m_Context.Swapchain().Extent();
-        renderPassBeginInfo.framebuffer = m_FBOs[m_ImageIndex]->data();
-        vkCmdBeginRenderPass(primaryCmdBuffer.data(), &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-        VkViewport vp{0, 0, m_Viewport.width, m_Viewport.y, 0.0f, 1.0f};
-        vkCmdSetViewport(primaryCmdBuffer.data(), 0, 1, &vp);
-        vkCmdSetScissor(primaryCmdBuffer.data(), 0, 1, &m_Scissor);
-
-        m_PostprocessPipeline->Bind(primaryCmdBuffer.data(), m_ImageIndex, std::optional<uint32_t>());
-        m_PostprocessPipeline->PushConstants(primaryCmdBuffer.data(), 0, m_ImageIndex);
-        vkCmdDraw(primaryCmdBuffer.data(), 3, 1, 0, 0);
-        vkCmdEndRenderPass(primaryCmdBuffer.data());
-    }
-
+    m_PostprocessRenderPass->End(primaryCmdBuffer);
     primaryCmdBuffer.End();
+
 
     VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = m_AcquireSemaphores[m_FrameIndex]->ptr();
+    submitInfo.pWaitSemaphores = m_AcquireSemaphores[m_FrameIndex].ptr();
     submitInfo.pWaitDstStageMask = &waitStages;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = primaryCmdBuffer.ptr();
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = m_ReleaseSemaphores[m_FrameIndex]->ptr();
+    submitInfo.pSignalSemaphores = m_ReleaseSemaphores[m_FrameIndex].ptr();
 
-    if (vkQueueSubmit(m_Device.GfxQueue(), 1, &submitInfo, m_Fences[m_FrameIndex]->data()) != VK_SUCCESS) {
-        throw std::runtime_error("failed to submit draw command buffer!");
+    VkResult result = vkQueueSubmit(m_Device.GfxQueue(), 1, &submitInfo, m_Fences[m_FrameIndex].data());
+    if (result != VK_SUCCESS) {
+        std::ostringstream msg;
+        msg << "[vkQueueSubmit] Failed to submit draw command buffer, error code: '" << result << "'";
+        throw std::runtime_error(msg.str().c_str());
     }
 
     auto &ctx = static_cast<GfxContextVk &>(m_Context);
@@ -408,13 +484,12 @@ void RendererVk::DrawFrame() {
     VkPresentInfoKHR presentInfo = {};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = m_ReleaseSemaphores[m_FrameIndex]->ptr();
+    presentInfo.pWaitSemaphores = m_ReleaseSemaphores[m_FrameIndex].ptr();
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = ctx.Swapchain().ptr();
     presentInfo.pImageIndices = &m_ImageIndex;
 
-    VkResult result = vkQueuePresentKHR(m_Device.GfxQueue(), &presentInfo);
-
+    result = vkQueuePresentKHR(m_Device.GfxQueue(), &presentInfo);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
 //        std::cout << "OUT_OF_DATE || SUBOPTIMAL" << std::endl;
 //        RecreateSwapchain();
@@ -425,14 +500,23 @@ void RendererVk::DrawFrame() {
     m_FrameIndex = (m_FrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
+
 void RendererVk::impl_OnWindowResize(WindowResizeEvent &) {
-//    RecreateSwapchain();
+    RecreateSwapchain();
 }
+
 
 void RendererVk::impl_WaitIdle() const {
     vkDeviceWaitIdle(m_Device);
     std::cout << currentTime() << "[Renderer] Idle state" << std::endl;
 }
+
+
+void RendererVk::impl_SetSkybox(const TextureCubemap *skybox) {
+    auto texIndices = m_SkyboxPipeline->BindCubemaps({skybox}, BindingKey(0, 0));
+    s_SkyboxTexIdx = texIndices.back();
+}
+
 
 void RendererVk::impl_FlushStagedData() {
     /// TODO: sort by data type and distribute into multiple device buffers, etc...
@@ -443,7 +527,7 @@ void RendererVk::impl_FlushStagedData() {
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
     {
-        vk::CommandBuffer transferCmdBuffer(m_TransferCmdBuffers->get(m_ImageIndex));
+        vk::CommandBuffer transferCmdBuffer(m_TransferCmdBuffers[m_ImageIndex]);
         transferCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
         auto copyRegions = m_StageBuffer.CopyRegions();
@@ -501,7 +585,7 @@ void RendererVk::impl_FlushStagedData() {
 
     /* Acquisition phase */
     {
-        vk::CommandBuffer gfxCmdBuffer(m_GfxCmdBuffers->get(m_ImageIndex));
+        vk::CommandBuffer gfxCmdBuffer(m_GfxCmdBuffers[m_ImageIndex]);
         gfxCmdBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
         bufferBarriers[0].srcAccessMask = 0;

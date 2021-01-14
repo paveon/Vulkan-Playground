@@ -7,31 +7,38 @@
 #include <unordered_map>
 #include "RendererAPI.h"
 #include "RenderCommand.h"
+#include "Texture.h"
 
 
 class MeshRenderer;
+
 class RenderPass;
+
 class Model;
+
 class ModelInstance;
+
 class Material;
+
 class PerspectiveCamera;
 
 class Scene {
 public:
-    std::vector<const Mesh*> m_Meshes;
-    std::unordered_map<const Material*, std::vector<const MeshRenderer*>> m_MaterialBatches;
-    const MeshRenderer* m_SkyboxMesh{};
+    std::vector<const Mesh *> m_Meshes;
+    std::unordered_map<const Material *, std::vector<const MeshRenderer *>> m_MaterialBatches;
+    const MeshRenderer *m_SkyboxMesh{};
     std::shared_ptr<PerspectiveCamera> m_Camera;
 
     Scene() = default;
 };
 
 class Layer;
+
 class ImGuiLayer;
 
-struct BufferAllocation{
-    void* memory;
-    void* handle;
+struct BufferAllocation {
+    void *memory;
+    void *handle;
     uint64_t offset;
 };
 
@@ -41,25 +48,35 @@ class Renderer {
 protected:
     static std::unique_ptr<Renderer> s_Renderer;
 
+    static std::shared_ptr<PerspectiveCamera> s_SceneCamera;
+    static const TextureCubemap* s_Skybox;
+    static float s_SkyboxLOD;
+    static bool s_SkyboxEnabled;
+    static float s_Exposure;
+
     Scene m_Scene;
     RenderCommandQueue m_TransferQueue;
     RenderCommandQueue m_CmdQueue;
 
-    ImGuiLayer* m_ImGuiLayer{};
+    ImGuiLayer *m_ImGuiLayer{};
 
     virtual void impl_NextFrame() = 0;
 
     virtual void impl_PresentFrame() = 0;
 
-    virtual void impl_OnWindowResize(WindowResizeEvent& e) = 0;
+    virtual void impl_OnWindowResize(WindowResizeEvent &e) = 0;
 
-    virtual auto impl_GetRenderPass() const -> const RenderPass& = 0;
+    virtual auto impl_GetRenderPass() const -> const RenderPass & = 0;
+
+    virtual auto impl_GetPostprocessRenderPass() const -> const RenderPass & = 0;
 
     virtual auto impl_GetImageIndex() const -> size_t = 0;
 
+    virtual void impl_SetSkybox(const TextureCubemap* skybox) = 0;
+
 //    virtual void impl_StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) = 0;
 
-    virtual void impl_StageMesh(Mesh* mesh) = 0;
+    virtual void impl_StageMesh(Mesh *mesh) = 0;
 
     virtual BufferAllocation impl_AllocateUniformBuffer(uint64_t size) = 0;
 
@@ -87,15 +104,28 @@ public:
 
     static void EndScene();
 
-    static void SubmitMeshRenderer(const MeshRenderer* mesh);
+    static void SubmitMeshRenderer(const MeshRenderer *mesh);
 
-    static void SubmitSkybox(const MeshRenderer* mesh);
+    static void SubmitSkybox(const MeshRenderer *mesh);
+
+    static void SetExposure(float value) { s_Exposure = value; }
+
+    static void SetSkybox(const TextureCubemap* skybox) {
+        s_Skybox = skybox;
+        s_Renderer->impl_SetSkybox(skybox);
+    }
+
+    static void SetSkyboxLOD(float value) { s_SkyboxLOD = value; }
+
+    static void EnableSkybox() { s_SkyboxEnabled = true; }
+
+    static void DisableSkybox() { s_SkyboxEnabled = false; }
 
 //    static void StageData(void* dstBufferHandle, uint64_t* dstOffsetHandle, const void *data, uint64_t bytes) {
 //        s_Renderer->impl_StageData(dstBufferHandle, dstOffsetHandle, data, bytes);
 //    }
 
-    static void StageMesh(Mesh* mesh) { s_Renderer->impl_StageMesh(mesh); }
+    static void StageMesh(Mesh *mesh) { s_Renderer->impl_StageMesh(mesh); }
 
     static auto AllocateUniformBuffer(uint64_t size) -> BufferAllocation {
         return s_Renderer->impl_AllocateUniformBuffer(size);
@@ -105,15 +135,17 @@ public:
 
     static auto GetSelectedAPI() -> RendererAPI::API { return RendererAPI::GetSelectedAPI(); }
 
-    static void SubmitCommand(const RenderCommand& cmd);
+    static void SubmitCommand(const RenderCommand &cmd);
 
-    static void OnWindowResize(WindowResizeEvent& e) { s_Renderer->impl_OnWindowResize(e); }
+    static void OnWindowResize(WindowResizeEvent &e) { s_Renderer->impl_OnWindowResize(e); }
 
-    static auto GetRenderPass() -> const RenderPass& { return s_Renderer->impl_GetRenderPass(); }
+    static auto GetRenderPass() -> const RenderPass & { return s_Renderer->impl_GetRenderPass(); }
+
+    static auto GetPostprocessRenderPass() -> const RenderPass & { return s_Renderer->impl_GetPostprocessRenderPass(); }
 
     static auto GetImageIndex() -> size_t { return s_Renderer->impl_GetImageIndex(); }
 
-    static void SetImGuiLayer(Layer* layer);
+    static void SetImGuiLayer(Layer *layer);
 
     static void WaitIdle() { s_Renderer->impl_WaitIdle(); }
 };

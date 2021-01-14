@@ -23,6 +23,10 @@ public:
 
     static auto CreateCubeAsset() -> std::unique_ptr<ModelAsset>;
 
+    static auto CreateQuadAsset() -> std::unique_ptr<ModelAsset>;
+
+    static auto CreateSphereAsset() -> std::unique_ptr<ModelAsset>;
+
     ModelAsset() = default;
 
     ModelAsset(std::vector<Material> materials, std::vector<Mesh> meshes)
@@ -60,6 +64,16 @@ public:
         }
         return textures;
     }
+
+    auto TextureMap(uint32_t materialIdx) -> std::unordered_map<Texture2D::Type, const Texture2D *> {
+        std::unordered_map<Texture2D::Type, const Texture2D *> textures;
+        for (const auto &[type, textureVector] : m_Textures[materialIdx]) {
+            if (!textureVector.empty()) {
+                textures.emplace(type, textureVector.front());
+            }
+        }
+        return textures;
+    }
 };
 
 
@@ -76,13 +90,18 @@ class Entity {
     uint32_t m_InstanceID = 0;
 
     void RecalculateMatrices() const {
-        const auto &pos = s_Positions[m_InstanceID];
-        const auto &scale = s_Scales[m_InstanceID];
-        const auto &rot = s_Rotations[m_InstanceID];
-        auto rotX = glm::rotate(glm::scale(glm::mat4(1.0f), scale), rot.x, glm::vec3(1.0f, 0.0f, 0.0f));
-        auto rotXY = glm::rotate(rotX, rot.y, glm::vec3(0.0f, 1.0f, 0.0f));
-        auto rotXYZ = glm::rotate(rotXY, rot.z, glm::vec3(0.0f, 0.0f, 1.0f));
-        s_ModelMatrices[m_InstanceID] = glm::translate(rotXYZ, pos);
+        const glm::vec3 &pos = s_Positions[m_InstanceID];
+        const glm::vec3 &scale = s_Scales[m_InstanceID];
+        const glm::vec3 &rot = s_Rotations[m_InstanceID];
+        glm::mat4 rotX = glm::rotate(glm::translate(glm::mat4(1.0f), pos), rot.x, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::mat4 rotXY = glm::rotate(rotX, rot.y, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 rotXYZ = glm::rotate(rotXY, rot.z, glm::vec3(0.0f, 0.0f, 1.0f));
+        s_ModelMatrices[m_InstanceID] = glm::scale(rotXYZ, scale);
+
+//        auto rotX = glm::rotate(glm::scale(glm::mat4(1.0f), scale), rot.x, glm::vec3(1.0f, 0.0f, 0.0f));
+//        auto rotXY = glm::rotate(rotX, rot.y, glm::vec3(0.0f, 1.0f, 0.0f));
+//        auto rotXYZ = glm::rotate(rotXY, rot.z, glm::vec3(0.0f, 0.0f, 1.0f));
+//        s_ModelMatrices[m_InstanceID] = glm::translate(rotXYZ, pos);
         s_NormalMatrices[m_InstanceID] = glm::transpose(glm::inverse(s_ModelMatrices[m_InstanceID]));
     }
 
@@ -107,11 +126,11 @@ public:
     std::string m_Name;
 
 
-    Entity(std::string name, std::unique_ptr<ModelAsset> &asset) : m_Name(std::move(name)) {
+    Entity(std::string name, ModelAsset &asset) : m_Name(std::move(name)) {
         OnCreate();
 
-        for (auto &assetMesh : asset->Meshes()) {
-            auto &meshMaterial = asset->GetMaterial(assetMesh.AssimpMaterialIdx());
+        for (auto &assetMesh : asset.Meshes()) {
+            auto &meshMaterial = asset.GetMaterial(assetMesh.AssimpMaterialIdx());
             m_MeshRenderers.emplace_back(assetMesh.CreateInstance(m_InstanceID));
             m_MeshRenderers.back().SetMaterialInstance(meshMaterial.CreateInstance());
         }
@@ -130,6 +149,8 @@ public:
     auto operator=(Entity &&other) noexcept -> Entity & = default;
 
     auto MeshRenderers() const -> const std::vector<MeshRenderer> & { return m_MeshRenderers; }
+
+    auto MeshRenderers() -> std::vector<MeshRenderer> & { return m_MeshRenderers; }
 
     auto AttachMesh(Mesh &mesh) -> MeshRenderer & {
         m_MeshRenderers.emplace_back(mesh.CreateInstance(m_InstanceID));

@@ -67,6 +67,7 @@ add_custom_command(
 file(GLOB_RECURSE GLSL_SOURCE_FILES
         "shaders/*.frag.glsl"
         "shaders/*.vert.glsl"
+        "shaders/*.geom.glsl"
         )
 
 foreach (GLSL ${GLSL_SOURCE_FILES})

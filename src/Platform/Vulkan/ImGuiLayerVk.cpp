@@ -59,7 +59,7 @@ void ImGuiLayerVk::InitResources() {
     m_CmdPool = m_Device.createCommandPool(m_Device.GfxQueueIdx(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     m_CmdBuffers = m_Device.createCommandBuffers(*m_CmdPool, imgCount);
 
-    m_RenderPass = (VkRenderPass) Renderer::GetRenderPass().VkHandle();
+    m_RenderPass = (VkRenderPass) Renderer::GetPostprocessRenderPass().VkHandle();
 
 //    auto extent = m_Context.Swapchain().Extent();
 //    const auto& imgViews = m_Context.Swapchain().ImageViews();
@@ -125,6 +125,8 @@ void ImGuiLayerVk::InitResources() {
     init_info.MinImageCount = 2;
     init_info.ImageCount = imgCount;
     init_info.CheckVkResultFn = check_vk_result;
+//    init_info.MSAASamples = m_Device.maxSamples();
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     ImGui_ImplVulkan_Init(&init_info, m_RenderPass);
 
     //TODO: causes validation error due to secondary level, will fix
