@@ -12,7 +12,7 @@ UniformBufferVk::UniformBufferVk(std::string name, size_t objectSize, bool perOb
 
     auto minOffset = m_Device->properties().limits.minUniformBufferOffsetAlignment;
     m_ObjectSize = objectSize;
-    m_ObjectSizeAligned = roundUp(m_ObjectSize, minOffset);
+    m_ObjectSizeAligned = math::roundUp(m_ObjectSize, minOffset);
 }
 
 

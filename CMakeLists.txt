@@ -12,7 +12,6 @@ add_subdirectory(extern/glfw)
 add_subdirectory(extern/spirv-cross)
 add_subdirectory(extern/assimp)
 
-include_directories(extern/vulkan/Include)
 include_directories(extern/glfw/include)
 include_directories(extern/spirv-cross/include)
 include_directories(extern/assimp/include)
@@ -22,7 +21,6 @@ include_directories(extern/tinyobjloader)
 include_directories(extern/glm)
 include_directories(extern/mathlib)
 include_directories(src)
-#include_directories(D:/VulkanSDK/1.1.106.0/Include)
 
 file(GLOB_RECURSE HEADERS_FILES "src/*.h")
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
@@ -46,22 +44,21 @@ set(HEADERS
 
 find_package(Vulkan REQUIRED)
 
-#add_library(vulkan STATIC IMPORTED GLOBAL)
-#set_target_properties(vulkan PROPERTIES IMPORTED_LOCATION "D:/VulkanSDK/1.1.106.0/Lib/vulkan-1.lib")
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(GTKMM gtkmm-3.0)
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
-target_link_libraries(${PROJECT_NAME} Vulkan::Vulkan glfw ${GLFW_LIBRARIES} spirv-cross-cpp assimp)
+target_link_libraries(${PROJECT_NAME} ${Vulkan_LIBRARIES} glfw ${GLFW_LIBRARIES} ${GTKMM_LIBRARIES} spirv-cross-cpp assimp)
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 target_compile_definitions(${PROJECT_NAME} PRIVATE BASE_DIR="${PROJECT_SOURCE_DIR}")
-target_include_directories(${PROJECT_NAME} PUBLIC ${Vulkan_INCLUDE_DIRS}/vulkan)
+target_include_directories(${PROJECT_NAME} PUBLIC ${GTKMM_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS})
 
 add_custom_command(
         TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/bin/
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> ${PROJECT_SOURCE_DIR}/bin/sandbox
 )
-
-#message(${Vulkan_INCLUDE_DIRS})
 
 
 file(GLOB_RECURSE GLSL_SOURCE_FILES

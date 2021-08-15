@@ -1,4 +1,4 @@
-#include "Window.h"
+#include "AppWindow.h"
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 #include "Platform/Windows/WindowWin32.h"
@@ -6,7 +6,7 @@
 #include "Platform/Linux/WindowLinux.h"
 #endif
 
-auto Window::Create(uint32_t width, uint32_t height, const char* title) -> std::unique_ptr<Window> {
+auto AppWindow::Create(uint32_t width, uint32_t height, const char* title) -> std::unique_ptr<AppWindow> {
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
    return std::make_unique<WindowWin32>(width, height, title);
 #elif defined(__linux__)

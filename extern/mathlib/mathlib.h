@@ -31,19 +31,19 @@ constexpr float TWO_PI_F = M_PI * 2.0;
 constexpr float PI_RAD_F = M_PI / 180.0;
 
 
-//#define CLAMP(lower_bound, value, upper_bound) std::max((lower_bound), std::min((upper_bound), (value)))
-template<typename T>
-inline auto CLAMP(T lowerBound, T value, T upperBound) -> T {
-    return std::max((lowerBound), std::min((upperBound), (value)));
-}
-
-inline auto roundUp(size_t number, size_t multiple) -> size_t {
-    assert(multiple && ((multiple & (multiple - 1)) == 0));
-    return (number + multiple - 1) & -multiple;
-}
-
-
 namespace math {
+    //#define CLAMP(lower_bound, value, upper_bound) std::max((lower_bound), std::min((upper_bound), (value)))
+    template<typename T>
+    inline auto CLAMP(T lowerBound, T value, T upperBound) -> T {
+        return std::max((lowerBound), std::min((upperBound), (value)));
+    }
+
+    inline auto roundUp(size_t number, size_t multiple) -> size_t {
+        assert(multiple && ((multiple & (multiple - 1)) == 0));
+        return (number + multiple - 1) & -multiple;
+    }
+
+
     struct mat4x4;
 
     using Type = float;

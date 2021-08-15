@@ -5,6 +5,7 @@
 #include <thread>
 #include <Engine/Renderer/Renderer.h>
 #include <Engine/Renderer/utils.h>
+#include <gtk/gtk.h>
 
 
 Application *Application::s_Application;
@@ -24,13 +25,19 @@ Application::Application(const char *name) : m_Name(name), m_LayerStack(this) {
 Application::~Application() {
     std::cout << currentTime() << "[" << s_Application->m_Name << "] Exiting" << std::endl;
     Renderer::Destroy();
+
+    g_object_unref (m_GtkApp);
 }
 
 void Application::Init() {
-    m_Window = Window::Create(800, 600, m_Name.data());
+    m_Window = AppWindow::Create(800, 600, m_Name.data());
     m_Window->SetEventCallback([this](std::unique_ptr<Event> event) { OnEvent(std::move(event)); });
 //    m_Renderer = std::make_unique<RendererVk>(static_cast<GfxContextVk &>(m_Window->Context()));
+
     Renderer::Init();
+
+    m_GtkApp = gtk_application_new("org.gtkmm.example", GApplicationFlags::G_APPLICATION_FLAGS_NONE);
+    gtk_init(nullptr, nullptr);
 
     std::cout << currentTime() << "[" << s_Application->m_Name << "] Initialized" << std::endl;
 }

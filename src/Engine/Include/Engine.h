@@ -3,7 +3,7 @@
 
 #include <Engine/ImGui/ImGuiLayer.h>
 #include <Engine/Application.h>
-#include <Engine/Window.h>
+#include <Engine/AppWindow.h>
 #include <Engine/EntryPoint.h>
 #include <Engine/Layer.h>
 #include <Engine/Input.h>
@@ -11,6 +11,7 @@
 #include <Engine/MouseButtonCodes.h>
 #include <Engine/Timestep.h>
 #include <Engine/Model.h>
+#include <Engine/Utils/PlatformUtils.h>
 
 #include <Engine/Renderer/Renderer.h>
 #include <Engine/Renderer/ShaderPipeline.h>

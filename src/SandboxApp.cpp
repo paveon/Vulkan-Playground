@@ -5,6 +5,7 @@
 #include <Engine/Include/Engine.h>
 #include <Platform/Vulkan/GraphicsContextVk.h>
 #include <glm/matrix.hpp>
+#include <future>
 
 
 struct DirectionalLight {
@@ -275,11 +276,13 @@ public:
                                                       depthState,
                                                       msState));
         auto pbrShaderStrips = m_Shaders.back();
-
-        m_SkyboxHdrTexture = TextureCubemap::CreateFromHDR(SKYBOX_HDR_TEXTURE, 512);
-        m_SkyboxIrradianceTexture = m_SkyboxHdrTexture->CreateIrradianceCubemap(256);
-        m_PrefilteredEnvMap = m_SkyboxHdrTexture->CreatePrefilteredCubemap(512, 5);
-        m_BrdfLut = Texture2D::GenerateBrdfLut(512);
+        std::future<void> asyncResult = Application::Get().m_TaskSystem.Async([&]() {
+            m_SkyboxHdrTexture = TextureCubemap::CreateFromHDR(SKYBOX_HDR_TEXTURE, 256);
+            m_SkyboxIrradianceTexture = m_SkyboxHdrTexture->CreateIrradianceCubemap(256);
+            m_PrefilteredEnvMap = m_SkyboxHdrTexture->CreatePrefilteredCubemap(256, 5);
+            m_BrdfLut = Texture2D::GenerateBrdfLut(256);
+        });
+        asyncResult.wait();
 //        m_SkyboxTexture = TextureCubemap::Create(SKYBOX_TEXTURE_PATHS);
         Renderer::SetSkybox(m_SkyboxHdrTexture);
 
@@ -639,7 +642,6 @@ public:
     void OnUpdate(Timestep ts) override {
         static float time = 0.0f;
         static auto lastMousePos = Input::MousePos();
-
         auto mousePos = Input::MousePos();
 
         if (mousePos != lastMousePos) {
@@ -739,6 +741,9 @@ public:
 
 
         ImGui::Begin("Scene options");
+        if (ImGui::Button("Open File")) {
+            FileDialogs::OpenFile("High Dynamic Range (.hdr)", "*.hdr");
+        }
 //        ImGui::SliderFloat3("Point Light", &m_SceneUBO.pointLight.position.x, -10, 10);
 //        ImGui::SliderFloat3("Light direction", &m_SceneUBO.light.direction.x, -1.0f, 1.0f);
 //        ImGui::SliderFloat3("Light ambient", &m_SceneUBO.light.ambient.x, 0.0f, 1.0f);

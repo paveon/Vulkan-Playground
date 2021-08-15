@@ -210,10 +210,10 @@ void RendererVk::CreateImageResources(const vk::Swapchain &swapchain) {
 
     m_MSColorImage.BindMemory(m_ImageMemory.data(), 0);
 
-    auto offset = roundUp(m_MSColorImage.MemoryInfo().size, m_DepthImage.MemoryInfo().alignment);
+    auto offset = math::roundUp(m_MSColorImage.MemoryInfo().size, m_DepthImage.MemoryInfo().alignment);
     m_DepthImage.BindMemory(m_ImageMemory.data(), offset);
 
-    offset = roundUp(offset + m_DepthImage.MemoryInfo().size, m_ColorImage.MemoryInfo().alignment);
+    offset = math::roundUp(offset + m_DepthImage.MemoryInfo().size, m_ColorImage.MemoryInfo().alignment);
     m_ColorImage.BindMemory(m_ImageMemory.data(), offset);
 
     m_MSColorImageView = vk::ImageView(m_Device, m_MSColorImage, VK_IMAGE_ASPECT_COLOR_BIT);

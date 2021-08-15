@@ -306,9 +306,9 @@ auto chooseSwapExtent(VkExtent2D desiredExtent, const VkSurfaceCapabilitiesKHR &
     if (capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     } else {
-        desiredExtent.width = CLAMP(capabilities.minImageExtent.width, desiredExtent.width,
+        desiredExtent.width = math::CLAMP(capabilities.minImageExtent.width, desiredExtent.width,
                                     capabilities.maxImageExtent.width);
-        desiredExtent.height = CLAMP(capabilities.minImageExtent.height, desiredExtent.height,
+        desiredExtent.height = math::CLAMP(capabilities.minImageExtent.height, desiredExtent.height,
                                      capabilities.maxImageExtent.height);
         return {desiredExtent.width, desiredExtent.height};
     }

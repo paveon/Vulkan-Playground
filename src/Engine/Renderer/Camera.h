@@ -81,13 +81,13 @@ public:
 
     void ChangeYawPitch(float yawDelta, float pitchDelta) {
         m_Yaw -= yawDelta;
-        m_Pitch = CLAMP(-HALF_PI_F + 0.01f, m_Pitch + pitchDelta, HALF_PI_F - 0.01f);
+        m_Pitch = math::CLAMP(-HALF_PI_F + 0.01f, m_Pitch + pitchDelta, HALF_PI_F - 0.01f);
         CalculateDirection();
     }
 
     void SetYawPitch(float yaw, float pitch) {
         m_Yaw = yaw;
-        m_Pitch = CLAMP(-HALF_PI_F + 0.01f, pitch, HALF_PI_F - 0.01f);
+        m_Pitch = math::CLAMP(-HALF_PI_F + 0.01f, pitch, HALF_PI_F - 0.01f);
         CalculateDirection();
     }
 

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <memory>
 #include <vector>
-#include <vulkan_core.h>
+#include <vulkan/vulkan_core.h>
 
 
 class Texture2D {

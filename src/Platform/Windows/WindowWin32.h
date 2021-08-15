@@ -2,12 +2,12 @@
 #define VULKAN_WINDOWWIN32_H
 #define GLFW_INCLUDE_VULKAN
 
-#include <Engine/Window.h>
+#include <Engine/AppWindow.h>
 #include <Engine/Renderer/GraphicsContext.h>
 
 struct GLFWwindow;
 
-class WindowWin32 : public Window {
+class WindowWin32 : public AppWindow {
 private:
     GLFWwindow* m_Window;
     EventCallbackFn m_EventCallback;

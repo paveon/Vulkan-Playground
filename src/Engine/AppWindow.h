@@ -1,5 +1,5 @@
-#ifndef VULKAN_WINDOW_H
-#define VULKAN_WINDOW_H
+#ifndef VULKAN_APPWINDOW_H
+#define VULKAN_APPWINDOW_H
 
 #include <string>
 #include <cstdint>
@@ -10,25 +10,25 @@
 
 class Event;
 
-class Window {
+class AppWindow {
 protected:
     uint32_t m_Width = 1280;
     uint32_t m_Height = 720;
     std::string m_Title = "Window";
     std::unique_ptr<GfxContext> m_Context;
 
-    Window() = default;
+    AppWindow() = default;
 
 public:
     using EventCallbackFn = std::function<void(std::unique_ptr<Event>)>;
 
-    Window(const Window& other) = delete;
+    AppWindow(const AppWindow& other) = delete;
 
-    auto operator=(const Window& other) -> Window& = delete;
+    auto operator=(const AppWindow& other) -> AppWindow& = delete;
 
-    virtual ~Window() = default;
+    virtual ~AppWindow() = default;
 
-    static auto Create(uint32_t width, uint32_t height, const char* title) -> std::unique_ptr<Window>;
+    static auto Create(uint32_t width, uint32_t height, const char* title) -> std::unique_ptr<AppWindow>;
 
     virtual void OnUpdate() = 0;
 
@@ -50,4 +50,4 @@ public:
 };
 
 
-#endif //VULKAN_WINDOW_H
+#endif //VULKAN_APPWINDOW_H

@@ -319,7 +319,7 @@ auto DeviceBuffer::TransferData(const vk::CommandBuffer &cmdBuffer,
 
 void vk::UniformBuffer::Allocate(VkDeviceSize size) {
     auto minOffset = m_Device->properties().limits.minUniformBufferOffsetAlignment;
-    size = roundUp(size, minOffset);
+    size = math::roundUp(size, minOffset);
 
     VkMemoryPropertyFlags memoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;

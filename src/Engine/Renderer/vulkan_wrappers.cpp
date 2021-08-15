@@ -212,7 +212,6 @@ namespace vk {
                     default:
                         throw std::runtime_error("[ShaderModule] Unsupported vector component size");
                 }
-                break;
             }
             case spirv_cross::SPIRType::BaseType::Double: {
                 switch (type.width) {
@@ -233,7 +232,6 @@ namespace vk {
                     default:
                         throw std::runtime_error("[ShaderModule] Unsupported vector component size");
                 }
-                break;
             }
             case spirv_cross::SPIRType::BaseType::Int: {
                 switch (type.width) {
@@ -278,7 +276,7 @@ namespace vk {
             default:
                 throw std::runtime_error("[ShaderModule] Unsupported shader SPIRV data type!");
         }
-        return {VK_FORMAT_END_RANGE, 0};
+        return {VK_FORMAT_UNDEFINED, 0};
     }
 
 
@@ -671,7 +669,7 @@ namespace vk {
         VkDeviceSize totalSize = 0;
         for (const auto *image : images) {
             resultTypeBits &= image->MemoryInfo().memoryTypeBits;
-            totalSize += roundUp(image->MemoryInfo().size, image->MemoryInfo().alignment);
+            totalSize += math::roundUp(image->MemoryInfo().size, image->MemoryInfo().alignment);
         }
 
         if (sizeOverride.has_value()) {
@@ -692,7 +690,7 @@ namespace vk {
         for (const auto *buffer : buffers) {
             const auto &info = buffer->MemoryInfo();
             resultTypeBits &= info.memoryTypeBits;
-            totalSize += roundUp(info.size, info.alignment);
+            totalSize += math::roundUp(info.size, info.alignment);
         }
 
         Allocate(findMemoryType(physDevice, resultTypeBits, flags), totalSize);
