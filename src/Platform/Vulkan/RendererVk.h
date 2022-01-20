@@ -31,12 +31,16 @@ class RendererVk : public Renderer {
         VkDeviceSize startOffset = 0;
     };
 
+    void InitializeStaticResources();
+
+    void ReleaseStaticResources();
 
 public:
     explicit RendererVk();
 
     ~RendererVk() override {
         vkDeviceWaitIdle(m_Device);
+        ReleaseStaticResources();
     }
 
     void AcquireNextImage();

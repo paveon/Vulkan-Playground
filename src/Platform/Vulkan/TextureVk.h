@@ -16,6 +16,11 @@ private:
 
     static void InitResources();
 
+    static void ReleaseResources();
+
+    friend void InitializeTextureResources();
+    friend void ReleaseTextureResources();
+
 public:
     Texture2DVk(const u_char *data, uint32_t width, uint32_t height, uint32_t channels, VkFormat format);
 
@@ -48,9 +53,13 @@ private:
 //                             uint32_t maxMipLevels,
 //                             VkFormat format,
 //                             VkImageUsageFlags usage) -> vk::Image *;
-
-    // TODO: bad approach, will get rid of it later on
+// TODO: bad approach, will get rid of it later on
     static void InitResources();
+
+    static void ReleaseResources();
+
+    friend void InitializeTextureResources();
+    friend void ReleaseTextureResources();
 
 public:
     TextureCubemapVk(std::array<u_char *, 6> data, uint32_t width, uint32_t height, uint32_t channels);
@@ -72,6 +81,11 @@ public:
 
     auto View() const -> const vk::ImageView & { return *m_TextureView; }
 };
+
+
+void InitializeTextureResources();
+
+void ReleaseTextureResources();
 
 
 #endif //VULKAN_TEXTUREVK_H

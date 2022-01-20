@@ -16,6 +16,7 @@
 #include "RendererVk.h"
 #include "ShaderPipelineVk.h"
 #include "RenderPassVk.h"
+#include "TextureVk.h"
 
 
 const std::map<ShaderType, const char *> RendererVk::POST_PROCESS_SHADERS{
@@ -35,6 +36,15 @@ const std::map<ShaderType, const char *> RendererVk::SKYBOX_SHADERS{
 };
 
 uint32_t RendererVk::s_SkyboxTexIdx = 0;
+
+
+void RendererVk::InitializeStaticResources() {
+   InitializeTextureResources();
+}
+
+void RendererVk::ReleaseStaticResources() {
+   ReleaseTextureResources();
+}
 
 
 RendererVk::RendererVk() :
@@ -171,13 +181,15 @@ RendererVk::RendererVk() :
     std::memcpy(m_BasicCubeMemory->m_Mapped, Mesh::s_CubeVertexPositions.data(), dataSize);
     m_BasicCubeMemory->UnmapMemory();
 
-    m_Viewport.x = 0;
-    m_Viewport.y = static_cast<float>(extent.height);
-    m_Viewport.width = static_cast<float>(extent.width);
-    m_Viewport.height = -static_cast<float>(extent.height);
-    m_Viewport.minDepth = 0.0f;
-    m_Viewport.maxDepth = 1.0f;
-    m_Scissor.extent = extent;
+   m_Viewport.x = 0;
+   m_Viewport.y = static_cast<float>(extent.height);
+   m_Viewport.width = static_cast<float>(extent.width);
+   m_Viewport.height = -static_cast<float>(extent.height);
+   m_Viewport.minDepth = 0.0f;
+   m_Viewport.maxDepth = 1.0f;
+   m_Scissor.extent = extent;
+
+   InitializeTextureResources();
 }
 
 
