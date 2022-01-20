@@ -38,10 +38,10 @@ struct SpotLight {
 };
 
 layout(set=1, binding = 0) uniform sampler2D texSamplers[];
-layout(set=1, binding = 1) uniform samplerCube cubeSamplers[];
+layout(set=2, binding = 0) uniform samplerCube cubeSamplers[];
 
 
-layout(std430, set=2, binding = 0) uniform SceneData {
+layout(std430, set=3, binding = 0) uniform SceneData {
     vec4 cameraPos;
     DirectionalLight light;
     SpotLight spotLight;
@@ -49,11 +49,12 @@ layout(std430, set=2, binding = 0) uniform SceneData {
 } sceneUBO;
 
 const uint MAX_LIGHTS = 5;
-layout(std430, set=3, binding=0) uniform LightsUBO {
+layout(std430, set=4, binding=0) uniform LightsUBO {
     PointLight pointLights[MAX_LIGHTS];
 } lightsUBO;
 
-layout(std430, set=4, binding=0) uniform MaterialData {
+
+layout(std430, set=5, binding=0) uniform MaterialData {
     vec4 ambient;
     vec4 diffuse;
     vec4 specular;
@@ -70,12 +71,18 @@ layout(std430, set=4, binding=0) uniform MaterialData {
     int irradianceMapTexIdx;
     int prefilterMapTexIdx;
     int brdfLutIdx;
-    int normalMapTexIdx;
 
+    int normalMapTexIdx;
     int albedoMapTexIdx;
     int metallicMapTexIdx;
     int roughnessMapTexIdx;
     int aoMapTexIdx;
+
+    int enableNormalTex;
+    int enableAlbedoTex;
+    int enableMetallicTex;
+    int enableRoughnessTex;
+    int enableAoTex;
 } materialUBO;
 
 
@@ -198,13 +205,20 @@ void main() {
 
 //    vec4 diffuseTexel = materialUBO.diffuseTexIdx >= 0 ? texture(texSamplers[materialUBO.diffuseTexIdx], TexCoords) : vec4(0.0f);
 //    vec4 specularTexel = materialUBO.specularTexIdx >= 0 ? texture(texSamplers[materialUBO.specularTexIdx], TexCoords) : vec4(vec3(0.5f), 1.0f);
-    vec3 albedo = materialUBO.albedoMapTexIdx >= 0 ? texture(texSamplers[materialUBO.albedoMapTexIdx], TexCoords).rgb : materialUBO.albedo.rgb;
-    float metallic = materialUBO.metallicMapTexIdx >= 0 ? texture(texSamplers[materialUBO.metallicMapTexIdx], TexCoords).r : materialUBO.metallic;
-    float roughness = materialUBO.roughnessMapTexIdx >= 0 ? texture(texSamplers[materialUBO.roughnessMapTexIdx], TexCoords).r : materialUBO.roughness;
-    float ao = materialUBO.aoMapTexIdx >= 0 ? texture(texSamplers[materialUBO.aoMapTexIdx], TexCoords).r : materialUBO.ao;
+    vec3 albedo = materialUBO.albedoMapTexIdx >= 0 && materialUBO.enableAlbedoTex == 1 ?
+        texture(texSamplers[materialUBO.albedoMapTexIdx], TexCoords).rgb : materialUBO.albedo.rgb;
+
+    float metallic = materialUBO.metallicMapTexIdx >= 0 && materialUBO.enableMetallicTex == 1 ?
+        texture(texSamplers[materialUBO.metallicMapTexIdx], TexCoords).r : materialUBO.metallic;
+
+    float roughness = materialUBO.roughnessMapTexIdx >= 0 && materialUBO.enableRoughnessTex == 1 ?
+        texture(texSamplers[materialUBO.roughnessMapTexIdx], TexCoords).r : materialUBO.roughness;
+
+    float ao = materialUBO.aoMapTexIdx >= 0 && materialUBO.enableAoTex == 1 ?
+        texture(texSamplers[materialUBO.aoMapTexIdx], TexCoords).r : materialUBO.ao;
 
     vec3 normal;
-    if (materialUBO.normalMapTexIdx >= 0) {
+    if (materialUBO.normalMapTexIdx >= 0 && materialUBO.enableNormalTex == 1) {
         normal = texture(texSamplers[materialUBO.normalMapTexIdx], TexCoords).rgb;
         normal = normal * 2.0 - 1.0;
         normal = normalize(TBN * normal);

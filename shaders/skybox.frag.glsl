@@ -2,6 +2,7 @@
 #extension GL_EXT_scalar_block_layout : enable
 #extension GL_EXT_nonuniform_qualifier : require
 
+
 layout(location = 0) in vec3 TexCoords;
 
 layout(location = 0) out vec4 outColor;
@@ -22,6 +23,6 @@ layout(push_constant) uniform PushData {
 
 void main() {
 //    outColor = vec4(1.0f);
-    outColor = vec4(textureLod(cubeSamplers[constants.skyboxTexIdx], TexCoords, constants.lodLevel).rgb, 1.0f);
-//    outColor = vec4(textureLod(cubeSamplers[0], TexCoords, 1.8f).rgb, 1.0f);
+    outColor = vec4(textureLod(cubeSamplers[nonuniformEXT(constants.skyboxTexIdx)], TexCoords, constants.lodLevel).rgb, 1.0f);
+//    outColor = vec4(textureLod(cubeSamplers[nonuniformEXT(0)], TexCoords, 1.8f).rgb, 1.0f);
 }
