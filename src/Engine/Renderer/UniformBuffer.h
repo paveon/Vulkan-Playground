@@ -1,6 +1,7 @@
 #ifndef GAME_ENGINE_UNIFORM_BUFFER_H
 #define GAME_ENGINE_UNIFORM_BUFFER_H
 
+#include <string>
 #include <memory>
 
 class UniformBuffer {

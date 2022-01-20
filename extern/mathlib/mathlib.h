@@ -3,8 +3,12 @@
 
 #include <cmath>
 #include <cassert>
+#include <algorithm>
+
+#ifdef __x86_64__
 #include <emmintrin.h>
 #include <pmmintrin.h>
+#endif
 
 #define _USE_MATH_DEFINES
 
@@ -84,6 +88,8 @@ namespace math {
 
         vec3(float x, float y, float z) : x(x), y(y), z(z) {}
 
+
+#ifdef __x86_64__
         auto operator/(float divisor) const -> vec3 {
             auto result = _mm_div_ps((__m128) *this, _mm_set_ps1(divisor));
             result = _mm_shuffle_ps(result, result, _MM_SHUFFLE(0, 1, 2, 3));
@@ -109,6 +115,7 @@ namespace math {
         }
 
         explicit operator __m128() const;
+#endif
 
         auto operator[](int index) -> float & {
             assert(index >= 0 && index < 3);
@@ -118,6 +125,8 @@ namespace math {
         auto operator==(const vec3 &other) const -> bool { return x == other.x && y == other.y && z == other.z; }
     };
 
+
+#ifdef __x86_64__
     inline vec3::operator __m128() const {
         return _mm_set_ps(x, y, z, 0);
     }
@@ -135,6 +144,7 @@ namespace math {
         auto *aux = reinterpret_cast<float *>(&tmp);
         return aux[1] + aux[2] + aux[3];
     }
+#endif
 
 
     struct vec4 {
@@ -152,6 +162,8 @@ namespace math {
 
         vec4(const vec3 &v, float w) : x(v.x), y(v.y), z(v.z), w(w) {}
 
+
+#ifdef __x86_64__
         auto operator-(const vec4 &v) const -> vec4 {
             auto result = _mm_sub_ps((__m128) *this, (__m128) v);
             result = _mm_shuffle_ps(result, result, _MM_SHUFFLE(0, 1, 2, 3));
@@ -171,6 +183,8 @@ namespace math {
         explicit operator __m128() const {
             return *reinterpret_cast<const __m128 *>(&x);
         }
+#endif
+
 
         auto operator[](int index) -> float & {
             assert(index >= 0 && index < 4);
@@ -187,6 +201,8 @@ namespace math {
         }
     };
 
+
+#ifdef __x86_64__
     inline auto dot(const vec4 &v1, const vec4 &v2) -> float {
         auto tmp = _mm_mul_ps((__m128) v1, (__m128) v2);
         auto *aux = reinterpret_cast<float *>(&tmp);
@@ -214,6 +230,7 @@ namespace math {
     }
 
     inline auto operator*(float multiplier, const vec4 &v) -> vec4 { return operator*(v, multiplier); }
+#endif
 
 
     struct mat4x4 {
@@ -248,6 +265,7 @@ namespace math {
     typedef mat4x4 mat4;
 
 
+#ifdef __x86_64__
     inline auto operator*(const mat4x4 &a, const mat4x4 &b) -> mat4x4 {
         const vec4 &aRow0 = a[0];
         const vec4 &aRow1 = a[1];
@@ -270,7 +288,6 @@ namespace math {
     inline auto vec4::operator*(const mat4x4 &mat) const -> vec4 {
         return (x * mat[0]) + (y * mat[1]) + (z * mat[2]) + (w * mat[3]);
     }
-
 
     inline auto radians(double degrees) -> double { return degrees * PI_RAD; }
 
@@ -378,6 +395,7 @@ namespace math {
 #endif
     }
 
+#endif
 }
 
 

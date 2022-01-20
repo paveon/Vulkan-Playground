@@ -8,6 +8,8 @@
 #include <thread>
 #include <future>
 #include <atomic>
+#include <optional>
+#include <vector>
 
 
 class NotificationQueue {

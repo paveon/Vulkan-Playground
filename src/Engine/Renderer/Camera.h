@@ -117,7 +117,7 @@ public:
                       float aspectRatio,
                       float near,
                       float far,
-                      float fov = math::radians(45.0f)) :
+                      float fov = glm::radians(45.0f)) :
             Camera(
                     glm::perspective(fov, aspectRatio, near, far),
                     glm::lookAt(position,

@@ -22,4 +22,9 @@ inline auto currentTime() -> const char* {
     return buf;
 }
 
+inline auto Log() -> std::ostream& {
+   return std::cout << currentTime();
+}
+
+
 #endif //VULKAN_CORE_H

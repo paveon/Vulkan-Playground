@@ -3,8 +3,10 @@
 
 #include <iostream>
 #include <Engine/Renderer/RendererAPI.h>
+#include <Engine/Core.h>
 
 auto GfxContext::Create(void* windowHandle) -> std::unique_ptr<GfxContext> {
+   std::cout << currentTime() << "[Engine][GfxContext] Constructing" << std::endl;
    switch (RendererAPI::GetSelectedAPI()) {
        case RendererAPI::API::VULKAN: return std::make_unique<GfxContextVk>(static_cast<GLFWwindow*>(windowHandle));
    }
@@ -13,5 +15,5 @@ auto GfxContext::Create(void* windowHandle) -> std::unique_ptr<GfxContext> {
 }
 
 GfxContext::~GfxContext() {
-    std::cout << "[GfxContext] Destroying rendering context" << std::endl;
+   std::cout << currentTime() << "[Engine][GfxContext] Destructing" << std::endl;
 }

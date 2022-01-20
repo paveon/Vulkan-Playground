@@ -12,7 +12,7 @@
 
 #define TIME_NOW std::chrono::steady_clock::now()
 
-void InitializeGLFW();
+void InitializeGLFW(const std::vector<std::pair<int, int>> &windowHints);
 
 void TerminateGLFW();
 
@@ -46,7 +46,10 @@ VKAPI_ATTR auto VKAPI_CALL debugCallback(
         const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
         void *pUserData) -> VkBool32;
 
-auto checkValidationLayerSupport(const std::vector<const char *> &requiredLayers) -> bool;
+auto
+checkLayerSupport(const std::vector<const char *> &requiredLayers,
+                  const std::vector<const char *> &optionalLayers)
+                  -> std::vector<const char *>;
 
 auto getRequiredVulkanExtensions(bool enableValidation) -> std::vector<const char *>;
 

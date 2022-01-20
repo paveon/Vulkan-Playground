@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+#include <locale>
 
 
 class Texture2D {
@@ -117,6 +118,8 @@ public:
     auto Size() const -> uint64_t { return m_Data.size(); }
 
     auto Data() const -> const u_char * { return m_Data.data(); }
+
+    auto MipLevels() const -> uint32_t { return std::floor(std::log2(std::max(m_Width, m_Height))) + 1; }
 
     static auto MipLevels(uint32_t width, uint32_t height) -> uint32_t {
         return std::floor(std::log2(std::max(width, height))) + 1;
