@@ -1,7 +1,7 @@
-#ifndef VULKAN_WINDOW_LINUX_H
-#define VULKAN_WINDOW_LINUX_H
+#ifndef VULKAN_WINDOW_MACOS_H
+#define VULKAN_WINDOW_MACOS_H
 
-#if defined(__linux__)
+#if defined (__APPLE__)
 
 #define GLFW_INCLUDE_VULKAN
 
@@ -50,5 +50,6 @@ public:
 
     auto Context() -> GfxContext& { return *m_Context; }
 };
+
 #endif
-#endif //VULKAN_WINDOW_LINUX_H
+#endif //VULKAN_WINDOW_MACOS_H

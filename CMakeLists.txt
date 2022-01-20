@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.14)
 project(Game_Engine)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpessimizing-move -Wredundant-move")
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpessimizing-move -Wredundant-move -std=c++17")
+
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -25,7 +28,6 @@ include_directories(src)
 file(GLOB_RECURSE HEADERS_FILES "src/*.h")
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
 
-
 set(SOURCES
         ${SOURCE_FILES}
 
@@ -33,14 +35,19 @@ set(SOURCES
         extern/imgui/imgui.cpp
         extern/imgui/imgui_draw.cpp
         extern/imgui/imgui_widgets.cpp
-        extern/imgui/imgui_demo.cpp)
+        extern/imgui/imgui_demo.cpp
+        extern/imgui/imgui_tables.cpp
+        extern/imgui/misc/cpp/imgui_stdlib.cpp
+        src/Platform/MacOS/DialogsMacOS.mm)
 
 set(HEADERS
         ${HEADER_FILES}
 
         extern/mathlib/mathlib.h
-        extern/imgui/imgui.h)
+        extern/imgui/imgui.h
+        extern/imgui/misc/cpp/imgui_stdlib.h)
 
+set_property(SOURCE src/Platform/MacOS/DialogsMacOS.mm PROPERTY COMPILE_FLAGS "-x objective-c++")
 
 find_package(Vulkan REQUIRED)
 
