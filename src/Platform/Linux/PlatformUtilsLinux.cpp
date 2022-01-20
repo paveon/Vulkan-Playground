@@ -1,11 +1,18 @@
 #include "Engine/Utils/PlatformUtils.h"
 #include "Engine/Application.h"
 
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#include "Platform/Windows/WindowWin32.h"
+
+#elif defined(__linux__)
+#include "Platform/Linux/WindowLinux.h"
+
 #include <gtk/gtk.h>
 #include <GLFW/glfw3.h>
 
-//#define GLFW_EXPOSE_NATIVE_X11
-//#include <GLFW/glfw3native.h>
+#define GLFW_EXPOSE_NATIVE_X11
+#include <GLFW/glfw3native.h>
 
 
 auto FileDialogs::OpenFile(const char* filterName, const char *filter) -> std::string {
@@ -43,3 +50,4 @@ auto FileDialogs::OpenFile(const char* filterName, const char *filter) -> std::s
 auto FileDialogs::SaveFile(const char* filterName, const char *filter) -> std::string {
     return "";
 }
+#endif

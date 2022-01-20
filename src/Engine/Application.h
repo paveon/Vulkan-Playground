@@ -16,6 +16,7 @@
 
 struct _GtkApplication;
 
+
 class Application {
 private:
     static Application *s_Application;
@@ -27,7 +28,12 @@ private:
     _GtkApplication* m_GtkApp;
 
     std::queue<std::unique_ptr<Event>> m_WindowEventQueue;
+    std::queue<std::pair<
+            std::function<std::shared_ptr<void>()>,
+            std::function<void(std::shared_ptr<void>)>>> m_MainThreadTaskQueue;
+
     std::mutex m_WindowEventMutex;
+    std::mutex m_MainThreadTaskQueueMutex;
 
     LayerStack m_LayerStack;
     bool m_Running = false;
@@ -58,6 +64,8 @@ private:
 
     void ProcessEventQueue();
 
+    void ExecuteMainThreadTasks();
+
 protected:
     explicit Application(const char *name);
 
@@ -83,6 +91,9 @@ public:
     static auto GetGraphicsContext() -> GfxContext & { return s_Application->m_Window->Context(); }
 
     static auto CreateApplication() -> std::unique_ptr<Application>;
+
+    static void ExecuteOnMainThread(const std::function<std::shared_ptr<void>()>& task,
+            const std::function<void(std::shared_ptr<void>)>& onCompleteCallback);
 
     TaskSystem m_TaskSystem;
 };

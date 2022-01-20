@@ -5,7 +5,9 @@
 
 class FileDialogs {
 public:
-    static auto OpenFile(const char* filterName, const char *filter) -> std::string;
+    static void OpenFile(const char* filterName,
+                         const std::vector<std::string> &filters,
+                         const std::function<void(const std::string&)>& callback);
 
     static auto SaveFile(const char* filterName, const char *filter) -> std::string;
 };
