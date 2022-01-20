@@ -148,6 +148,8 @@ public:
 
     auto operator=(Entity &&other) noexcept -> Entity & = default;
 
+    auto GetID() const -> uint32_t { return m_InstanceID; }
+
     auto MeshRenderers() const -> const std::vector<MeshRenderer> & { return m_MeshRenderers; }
 
     auto MeshRenderers() -> std::vector<MeshRenderer> & { return m_MeshRenderers; }

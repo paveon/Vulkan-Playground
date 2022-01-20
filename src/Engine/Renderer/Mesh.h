@@ -6,6 +6,7 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include <assimp/material.h>
+#include <assimp/mesh.h>
 #include "Texture.h"
 #include "Material.h"
 
@@ -30,7 +31,6 @@ struct MeshTexture {
     Texture2D::Type type;
 };
 
-class aiMesh;
 
 class Mesh;
 
@@ -57,6 +57,8 @@ public:
 
     auto operator=(MeshRenderer &&other) noexcept -> MeshRenderer & = default;
 
+    auto GetID() const -> uint32_t { return m_MeshInstanceID; }
+
     void SetMaterialInstance(MaterialInstance material) {
         m_MaterialInstance = std::move(material);
     }
@@ -64,6 +66,8 @@ public:
     auto GetMaterialInstance() -> MaterialInstance & { return m_MaterialInstance; }
 
     auto GetMaterialInstance() const -> const MaterialInstance & { return m_MaterialInstance; }
+
+    auto GetMaterial() -> Material * { return m_MaterialInstance.GetMaterial(); }
 
     auto GetMaterial() const -> const Material * { return m_MaterialInstance.GetMaterial(); }
 

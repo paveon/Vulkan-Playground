@@ -60,14 +60,14 @@ namespace std {
     template<>
     struct hash<TextureKey<Texture2D::Type>> {
         auto operator()(const TextureKey<Texture2D::Type> &k) const -> std::size_t {
-            return std::hash<uint64_t>()(k.key);
+           return std::hash<uint64_t>()(k.key);
         }
     };
 
     template<>
     struct hash<TextureKey<TextureCubemap::Type>> {
         auto operator()(const TextureKey<TextureCubemap::Type> &k) const -> std::size_t {
-            return std::hash<uint64_t>()(k.key);
+           return std::hash<uint64_t>()(k.key);
         }
     };
 }
@@ -84,10 +84,10 @@ class MaterialInstance {
     MaterialInstance(Material *model, uint32_t id) : m_Material(model), m_InstanceID(id) {}
 
     void Move(MaterialInstance &other) {
-        m_Material = other.m_Material;
-        m_InstanceID = other.m_InstanceID;
-        other.m_Material = nullptr;
-        other.m_InstanceID = 0;
+       m_Material = other.m_Material;
+       m_InstanceID = other.m_InstanceID;
+       other.m_Material = nullptr;
+       other.m_InstanceID = 0;
     }
 
 public:
@@ -100,16 +100,21 @@ public:
     MaterialInstance(MaterialInstance &&other) noexcept { Move(other); }
 
     auto operator=(MaterialInstance &&other) noexcept -> MaterialInstance & {
-        Move(other);
-        return *this;
+       Move(other);
+       return *this;
     };
 
     auto InstanceID() const { return m_InstanceID; }
 
-    auto GetMaterial() const -> const Material * { return m_Material; }
+    auto GetMaterial() -> Material* { return m_Material; }
+
+    auto GetMaterial() const -> const Material* { return m_Material; }
 
     template<typename T>
     void SetUniform(BindingKey bindingKey, const std::string &memberName, const T &value);
+
+    template<typename T>
+    auto GetUniform(BindingKey bindingKey, const std::string &memberName) -> T;
 };
 
 
@@ -161,9 +166,9 @@ public:
     Material(std::string name, std::shared_ptr<ShaderPipeline> shaderPipeline);
 
     ~Material() {
-        if (m_ShaderPipeline) {
-            m_ShaderPipeline->OnDetach(m_MaterialID);
-        }
+       if (m_ShaderPipeline) {
+          m_ShaderPipeline->OnDetach(m_MaterialID);
+       }
     }
 
     Material(const Material &other) = delete;
@@ -184,8 +189,15 @@ public:
 
     auto GetMaterialID() const { return m_MaterialID; }
 
+    auto GetBoundTextures2D() const ->
+    const std::unordered_map<TextureKey<Texture2D::Type>, std::vector<BoundTexture2D>> & { return m_BoundTextures2D; }
+
+    auto GetBoundCubemaps() const ->
+    const std::unordered_map<TextureKey<TextureCubemap::Type>, std::vector<BoundCubemap>> & { return m_BoundCubemaps; }
+
+
     void BindUniformBuffer(const UniformBuffer *ub, BindingKey bindingKey) {
-        m_ShaderPipeline->BindUniformBuffer(ub, bindingKey);
+       m_ShaderPipeline->BindUniformBuffer(ub, bindingKey);
     }
 
 //    auto BindTextures(const std::vector<std::pair<Texture2D::Type, const Texture2D *>> &textures,
@@ -202,106 +214,133 @@ public:
 //    void AllocateResources(uint32_t objectCount);
 
     template<typename T>
-    void SetUniform(BindingKey bindingKey, const std::string &memberName, const T &value) {
-        auto uniformIt = m_ShaderPipeline->ShaderUniforms().find(bindingKey);
-        if (uniformIt == m_ShaderPipeline->ShaderUniforms().end()) {
-            std::ostringstream msg;
-            msg << "[Material::SetUniform] Shader '" << m_Name
-                << "' doesn't have uniform binding {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
-            throw std::runtime_error(msg.str().c_str());
-        }
-        const auto &uniform = uniformIt->second;
-        auto memberIt = uniform.members.find(memberName);
-        if (memberIt == uniform.members.end()) {
-            std::ostringstream msg;
-            msg << "[Material::SetUniform] Uniform structure at binding {"
-                << bindingKey.Set() << ";" << bindingKey.Binding() << "}"
-                << "' doesn't have '" << memberName << "' member";
-            throw std::runtime_error(msg.str().c_str());
-        }
-        const auto &member = memberIt->second;
-        if (member.size != sizeof(T)) {
-            std::ostringstream msg;
-            msg << "[Material::SetUniform] Invalid size of input data: " << sizeof(T)
-                << " bytes. Member '" << memberName << "' of uniform structure at binding {"
-                << bindingKey.Set() << ";" << bindingKey.Binding() << "} has size: " << member.size << " bytes";
-            throw std::runtime_error(msg.str().c_str());
-        }
+    void SetUniform(BindingKey bindingKey, const std::string &memberName, const T &value, bool propagate = false) {
+       auto uniformIt = m_ShaderPipeline->ShaderUniforms().find(bindingKey);
+       if (uniformIt == m_ShaderPipeline->ShaderUniforms().end()) {
+          std::ostringstream msg;
+          msg << "[Material::SetUniform] Shader '" << m_Name
+              << "' doesn't have uniform binding {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
+          throw std::runtime_error(msg.str().c_str());
+       }
+       const auto &uniform = uniformIt->second;
+       auto memberIt = uniform.members.find(memberName);
+       if (memberIt == uniform.members.end()) {
+          std::ostringstream msg;
+          msg << "[Material::SetUniform] Uniform structure at binding {"
+              << bindingKey.Set() << ";" << bindingKey.Binding() << "}"
+              << "' doesn't have '" << memberName << "' member";
+          throw std::runtime_error(msg.str().c_str());
+       }
+       const auto &member = memberIt->second;
+       if (member.size != sizeof(T)) {
+          std::ostringstream msg;
+          msg << "[Material::SetUniform] Invalid size of input data: " << sizeof(T)
+              << " bytes. Member '" << memberName << "' of uniform structure at binding {"
+              << bindingKey.Set() << ";" << bindingKey.Binding() << "} has size: " << member.size << " bytes";
+          throw std::runtime_error(msg.str().c_str());
+       }
 
-        auto dataIt = m_SharedUniformData.find(bindingKey);
-        if (dataIt == m_SharedUniformData.end()) {
-            std::ostringstream msg;
-            msg << "[(" << m_Name << ")->SetUniform] Uniform {"
-                << bindingKey.Set() << ";" << bindingKey.Binding() << "} doesn't exist";
-            throw std::runtime_error(msg.str().c_str());
-        }
-        auto &uniformData = dataIt->second.data;
-        std::memcpy(&uniformData[member.offset], &value, member.size);
+       auto dataIt = m_SharedUniformData.find(bindingKey);
+       if (dataIt == m_SharedUniformData.end()) {
+          std::ostringstream msg;
+          msg << "[(" << m_Name << ")->SetUniform] Uniform {"
+              << bindingKey.Set() << ";" << bindingKey.Binding() << "} doesn't exist";
+          throw std::runtime_error(msg.str().c_str());
+       }
+       auto &sharedUniformData = dataIt->second.data;
+       std::memcpy(&sharedUniformData[member.offset], &value, member.size);
+
+       /* Propagate the change into material instances too if it's a per object uniform */
+       if (propagate && uniform.perObject) {
+          dataIt = m_UniformData.find(bindingKey);
+          auto& uniformData = dataIt->second.data;
+          for (size_t instanceID = 0; instanceID < m_InstanceCount; ++instanceID) {
+             size_t instanceOffset = dataIt->second.objectSize * instanceID;
+             std::memcpy(&uniformData[instanceOffset + member.offset], &value, member.size);
+          }
+       }
 //        m_ShaderPipeline->SetUniformData(m_MaterialID, bindingKey, &uniformData[member.offset], 1);
     }
 
+
+    template<typename T>
+    auto RetrieveUniformMember(size_t instanceID, BindingKey bindingKey, const std::string &memberName)
+    -> std::pair<const UniformMember*, Uniform*> {
+       if (instanceID >= m_InstanceCount) {
+          std::ostringstream msg;
+          msg << "[(" << m_Name << ")->RetrieveUniformMember] Object index '" << m_InstanceCount << "' is out of bounds";
+          throw std::runtime_error(msg.str().c_str());
+       }
+
+       auto uniformIt = m_ShaderPipeline->ShaderUniforms().find(bindingKey);
+       if (uniformIt == m_ShaderPipeline->ShaderUniforms().end()) {
+          std::ostringstream msg;
+          msg << "[Material::RetrieveUniformMember] Shader '" << m_Name
+              << "' doesn't have uniform binding {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
+          throw std::runtime_error(msg.str().c_str());
+       }
+       const auto &uniform = uniformIt->second;
+       auto memberIt = uniform.members.find(memberName);
+       if (memberIt == uniform.members.end()) {
+          std::ostringstream msg;
+          msg << "[Material::RetrieveUniformMember] Uniform structure at binding {"
+              << bindingKey.Set() << ";" << bindingKey.Binding() << "}"
+              << "' doesn't have '" << memberName << "' member";
+          throw std::runtime_error(msg.str().c_str());
+       }
+       const auto &member = memberIt->second;
+       if (member.size != sizeof(T)) {
+          std::ostringstream msg;
+          msg << "[Material::RetrieveUniformMember] Invalid size of input data: " << sizeof(T)
+              << " bytes. Member '" << memberName << "' of uniform structure at binding {"
+              << bindingKey.Set() << ";" << bindingKey.Binding() << "} has size: " << member.size << " bytes";
+          throw std::runtime_error(msg.str().c_str());
+       }
+
+       auto uniformDataIt = m_UniformData.find(bindingKey);
+       if (uniformDataIt == m_UniformData.end()) {
+          std::ostringstream msg;
+          msg << "[(" << m_Name << ")->SetInstanceUniform] Uniform {"
+              << bindingKey.Set() << ";" << bindingKey.Binding() << "} doesn't exist";
+          throw std::runtime_error(msg.str().c_str());
+       }
+       return {&member, &uniformDataIt->second};
+    }
+
+
     template<typename T>
     void SetInstanceUniform(size_t instanceID, BindingKey bindingKey, const std::string &memberName, const T &value) {
-        if (instanceID >= m_InstanceCount) {
-            std::ostringstream msg;
-            msg << "[(" << m_Name << ")->SetObjectUniform] Object index '" << m_InstanceCount << "' is out of bounds";
-            throw std::runtime_error(msg.str().c_str());
-        }
-
-        auto uniformIt = m_ShaderPipeline->ShaderUniforms().find(bindingKey);
-        if (uniformIt == m_ShaderPipeline->ShaderUniforms().end()) {
-            std::ostringstream msg;
-            msg << "[Material::SetUniform] Shader '" << m_Name
-                << "' doesn't have uniform binding {" << bindingKey.Set() << ";" << bindingKey.Binding() << "}";
-            throw std::runtime_error(msg.str().c_str());
-        }
-        const auto &uniform = uniformIt->second;
-        auto memberIt = uniform.members.find(memberName);
-        if (memberIt == uniform.members.end()) {
-            std::ostringstream msg;
-            msg << "[Material::SetUniform] Uniform structure at binding {"
-                << bindingKey.Set() << ";" << bindingKey.Binding() << "}"
-                << "' doesn't have '" << memberName << "' member";
-            throw std::runtime_error(msg.str().c_str());
-        }
-        const auto &member = memberIt->second;
-        if (member.size != sizeof(T)) {
-            std::ostringstream msg;
-            msg << "[Material::SetUniform] Invalid size of input data: " << sizeof(T)
-                << " bytes. Member '" << memberName << "' of uniform structure at binding {"
-                << bindingKey.Set() << ";" << bindingKey.Binding() << "} has size: " << member.size << " bytes";
-            throw std::runtime_error(msg.str().c_str());
-        }
-
-        auto uniformDataIt = m_UniformData.find(bindingKey);
-        if (uniformDataIt == m_UniformData.end()) {
-            std::ostringstream msg;
-            msg << "[(" << m_Name << ")->SetInstanceUniform] Uniform {"
-                << bindingKey.Set() << ";" << bindingKey.Binding() << "} doesn't exist";
-            throw std::runtime_error(msg.str().c_str());
-        }
-        auto &uniformData = uniformDataIt->second;
-        size_t instanceOffset = uniformData.objectSize * instanceID;
-        std::memcpy(&uniformData.data[instanceOffset + member.offset], &value, member.size);
+       const auto& [member, uniformData] = RetrieveUniformMember<T>(instanceID, bindingKey, memberName);
+       size_t instanceOffset = uniformData->objectSize * instanceID;
+       std::memcpy(&uniformData->data[instanceOffset + member->offset], &value, member->size);
     }
 
     template<typename T>
-    void SetDynamicUniforms(BindingKey bindingKey, size_t firstIndex, const std::vector<T> &values) {
-        if ((firstIndex + values.size()) > m_InstanceCount) {
-            std::ostringstream msg;
-            msg << "[(" << m_Name << ")->SetDynamicUniforms] Object index '" << m_InstanceCount << "' is out of bounds";
-            throw std::runtime_error(msg.str().c_str());
-        }
-
-        m_ShaderPipeline->SetUniformData(m_MaterialID, bindingKey, values.data(), values.size());
+    auto GetInstanceUniform(size_t instanceID, BindingKey bindingKey, const std::string &memberName) -> T {
+       const auto& [member, uniformData] = RetrieveUniformMember<T>(instanceID, bindingKey, memberName);
+       size_t instanceOffset = uniformData->objectSize * instanceID;
+       T retrievedValue;
+       std::memcpy(&retrievedValue, &uniformData->data[instanceOffset + member->offset], member->size);
+       return retrievedValue;
     }
 
-
-    template<typename T>
-    void SetDynamicUniform(BindingKey bindingKey, size_t index, const T &value) {
-        std::vector<T> values{value};
-        SetDynamicUniforms(bindingKey, index, values);
-    }
+//    template<typename T>
+//    void SetDynamicUniforms(BindingKey bindingKey, size_t firstIndex, const std::vector<T> &values) {
+//       if ((firstIndex + values.size()) > m_InstanceCount) {
+//          std::ostringstream msg;
+//          msg << "[(" << m_Name << ")->SetDynamicUniforms] Object index '" << m_InstanceCount << "' is out of bounds";
+//          throw std::runtime_error(msg.str().c_str());
+//       }
+//
+//       m_ShaderPipeline->SetUniformData(m_MaterialID, bindingKey, values.data(), values.size());
+//    }
+//
+//
+//    template<typename T>
+//    void SetDynamicUniform(BindingKey bindingKey, size_t index, const T &value) {
+//       std::vector<T> values{value};
+//       SetDynamicUniforms(bindingKey, index, values);
+//    }
 
 
     void UpdateUniforms();
@@ -309,8 +348,12 @@ public:
 
 template<typename T>
 void MaterialInstance::SetUniform(BindingKey bindingKey, const std::string &memberName, const T &value) {
-    m_Material->SetInstanceUniform(m_InstanceID, bindingKey, memberName, value);
+   m_Material->SetInstanceUniform(m_InstanceID, bindingKey, memberName, value);
 }
 
+template<typename T>
+T MaterialInstance::GetUniform(BindingKey bindingKey, const std::string &memberName) {
+   return m_Material->GetInstanceUniform<T>(m_InstanceID, bindingKey, memberName);
+}
 
 #endif //GAME_ENGINE_MATERIAL_H
